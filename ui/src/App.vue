@@ -27,34 +27,51 @@ export default {
     ...mapState(["instanceName", "instanceLabel", "core"]),
   },
   created() {
-    const core = window.parent.core;
-    this.setCoreInStore(core);
-    const instanceName = /#\/apps\/([a-zA-Z0-9_-]+)/.exec(
-      window.parent.location.hash
-    )[1];
-    this.setInstanceNameInStore(instanceName);
-    this.getInstanceLabel();
-    this.setAppName();
+    try {
+      const core = window.parent.core;
+      if (!core) {
+        console.error("SimpleStaff: window.parent.core is not available");
+        return;
+      }
+      this.setCoreInStore(core);
 
-    // listen to change route events
-    const context = this;
-    window.addEventListener(
-      "changeRoute",
-      function (e) {
-        const requestedPage = e.detail;
-        context.$router.replace(requestedPage);
-      },
-      false
-    );
+      // Safely extract instance name from parent URL hash
+      const hashMatch = /#\/apps\/([a-zA-Z0-9_-]+)/.exec(
+        window.parent.location.hash
+      );
+      if (!hashMatch || !hashMatch[1]) {
+        console.error("SimpleStaff: could not extract instance name from URL hash:", window.parent.location.hash);
+        return;
+      }
+      const instanceName = hashMatch[1];
+      this.setInstanceNameInStore(instanceName);
+      this.getInstanceLabel();
+      this.setAppName();
 
-    // configure global shortcuts
-    core.$root.$emit("configureKeyboardShortcuts", window);
+      // listen to change route events
+      const context = this;
+      window.addEventListener(
+        "changeRoute",
+        function (e) {
+          const requestedPage = e.detail;
+          context.$router.replace(requestedPage);
+        },
+        false
+      );
 
-    const queryParams = this.getQueryParamsForApp();
-    const requestedPage = queryParams.page || "status";
+      // configure global shortcuts
+      if (core.$root) {
+        core.$root.$emit("configureKeyboardShortcuts", window);
+      }
 
-    if (requestedPage != "status") {
-      this.$router.replace(requestedPage);
+      const queryParams = this.getQueryParamsForApp();
+      const requestedPage = queryParams.page || "status";
+
+      if (requestedPage != "status") {
+        this.$router.replace(requestedPage);
+      }
+    } catch (e) {
+      console.error("SimpleStaff: error during app initialization:", e);
     }
   },
   methods: {

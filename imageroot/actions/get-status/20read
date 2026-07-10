@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+
+#
+# Copyright (C) 2024 BLS-ISP
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+import json
+import sys
+import subprocess
+import agent
+import os
+
+# Prepare return variable
+status = {}
+
+# Read node info from the environment
+status["instance"] = os.environ.get("MODULE_ID", "")
+status["node"] = os.environ.get("NODE_ID", "")
+status["node_ui_name"] = ""
+
+# Read services status
+status["services"] = []
+try:
+    service_name = "simplestaff.service"
+    result = subprocess.run(
+        ["systemctl", "--user", "show", service_name, "--property=ActiveState,UnitFileState,Result"],
+        capture_output=True, text=True
+    )
+    props = {}
+    for line in result.stdout.strip().split("\n"):
+        if "=" in line:
+            k, v = line.split("=", 1)
+            props[k] = v
+
+    status["services"].append({
+        "name": service_name,
+        "active": props.get("ActiveState", "") == "active",
+        "failed": props.get("Result", "") == "failed" or props.get("ActiveState", "") == "failed",
+        "enabled": props.get("UnitFileState", "") == "enabled",
+    })
+except Exception as e:
+    print(f"Warning: could not read service status: {e}", file=sys.stderr)
+
+# Read container images
+status["images"] = []
+try:
+    result = subprocess.run(
+        ["podman", "image", "list", "--format", "json", "--no-trunc"],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        images = json.loads(result.stdout)
+        for image in images:
+            name = ""
+            if image.get("Names"):
+                name = image["Names"][0]
+            elif image.get("names"):
+                name = image["names"][0]
+            status["images"].append({
+                "name": name,
+                "size": image.get("Size", image.get("size", 0)),
+                "created": image.get("Created", image.get("created", "")),
+            })
+except Exception as e:
+    print(f"Warning: could not list images: {e}", file=sys.stderr)
+
+# Read volumes
+status["volumes"] = []
+try:
+    result = subprocess.run(
+        ["podman", "volume", "ls", "--format", "json"],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        volumes = json.loads(result.stdout)
+        for vol in volumes:
+            status["volumes"].append({
+                "name": vol.get("Name", vol.get("name", "")),
+                "mount": vol.get("Mountpoint", vol.get("mountPoint", "")),
+                "created": vol.get("CreatedAt", vol.get("createdAt", "")),
+            })
+except Exception as e:
+    print(f"Warning: could not list volumes: {e}", file=sys.stderr)
+
+json.dump(status, fp=open("output.json", "w"))

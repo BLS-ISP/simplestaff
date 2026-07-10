@@ -31,6 +31,17 @@ for (const f in Filters) {
 
 Vue.config.productionTip = false;
 
+// Global error handler: prevent uncaught Vue errors from crashing the NS8 admin panel
+Vue.config.errorHandler = function (err, vm, info) {
+  console.error("SimpleStaff Vue error:", err, info);
+};
+
+// Global unhandled promise rejection handler
+window.addEventListener("unhandledrejection", function (event) {
+  console.error("SimpleStaff unhandled promise rejection:", event.reason);
+  event.preventDefault();
+});
+
 // i18n
 import VueI18n from "vue-i18n";
 import { loadLanguage } from "./i18n";
