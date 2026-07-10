@@ -52,7 +52,26 @@ jobs:
           push: true
           tags: ${{ env.FRONTEND_IMAGE }}:latest
 
-      # 3. Build & Push Nethserver 8 Module Scratch Installer Image (App Bundle)
+      # 3. Build NS8 Module Admin UI (Vue.js)
+      - name: Setup Node.js for UI build
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Enable Corepack (Yarn)
+        run: corepack enable
+
+      - name: Install UI dependencies
+        working-directory: ./ui
+        run: yarn install
+
+      - name: Build UI
+        working-directory: ./ui
+        run: yarn build
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
+
+      # 4. Build & Push Nethserver 8 Module Installer Image (includes built UI)
       - name: Build and push Nethserver 8 Module Installer image
         uses: docker/build-push-action@v5
         with:

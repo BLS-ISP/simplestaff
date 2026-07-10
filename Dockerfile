@@ -1,14 +1,14 @@
 # ============================================
 # Nethserver 8 - Module Installer Image
 # ============================================
-# This image bundles the imageroot (actions, systemd units, hooks)
-# and the UI (admin portal config page) for NS8 module installation.
+# Built with buildah-like approach: scratch image + imageroot + built UI
+# The GitHub Action builds the Vue.js UI and copies the dist output.
 
 FROM alpine:latest
 
-# Copy imageroot and ui to their NS8-standard root-level directories
+# Copy imageroot (actions, systemd, hooks) and built UI (from dist/)
 COPY imageroot /imageroot
-COPY ui /ui
+COPY ui/dist /ui
 
 # Nethserver 8 Module metadata labels
 LABEL org.nethserver.rootfull="0" \

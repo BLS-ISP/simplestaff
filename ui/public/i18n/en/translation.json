@@ -1,0 +1,50 @@
+{
+  "common": {
+    "required": "This field is required",
+    "processing": "Processing..."
+  },
+  "status": {
+    "title": "Status",
+    "app_instance": "App instance",
+    "installation_node": "Installation node",
+    "node": "Node",
+    "services": "Service | Services",
+    "no_services": "No services",
+    "app_images": "App image | App images",
+    "no_images": "No images",
+    "app_volumes": "App volume | App volumes",
+    "no_volumes": "No volumes",
+    "name": "Name",
+    "size": "Size",
+    "created": "Created",
+    "mount": "Mount"
+  },
+  "settings": {
+    "title": "Settings",
+    "save": "Save",
+    "domain_name": "Domain name",
+    "domain_name_placeholder": "e.g. time.bls-isp.net",
+    "super_admin_email": "Super admin email",
+    "super_admin_email_placeholder": "e.g. admin@company.com",
+    "super_admin_password": "Super admin password",
+    "super_admin_password_placeholder": "At least 6 characters",
+    "configure_instance": "Configure {instance}"
+  },
+  "about": {
+    "title": "About"
+  },
+  "action": {
+    "get-status": "Get status",
+    "get-configuration": "Get configuration",
+    "configure-module": "Configure module",
+    "get-name": "Get name",
+    "list-backup-repositories": "List backup repositories",
+    "list-backups": "List backups"
+  },
+  "task": {
+    "cannot_create_task": "Cannot create task {action}"
+  },
+  "error": {
+    "generic_error": "An error occurred. Check the system logs."
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "SimpleStaff",
+  "upstream_name": "SimpleStaff",
+  "description": {
+    "en": "Intelligent shift management and ArbZG compliance system.",
+    "de": "Intelligente Schichtplanung und ArbZG-Validierung."
+  },
+  "categories": ["web", "office"],
+  "authors": [
+    {
+      "name": "BLS-ISP Team",
+      "email": "info@bls-isp.net"
+    }
+  ],
+  "docs": {
+    "documentation_url": "https://time.bls-isp.net",
+    "code_url": "https://github.com/BLS-ISP/simplestaff",
+    "bug_url": "https://github.com/BLS-ISP/simplestaff/issues"
+  },
+  "source": "ghcr.io/bls-isp/ns8-simplestaff"
+}

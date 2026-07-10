@@ -1,0 +1,50 @@
+{
+  "common": {
+    "required": "Dieses Feld ist erforderlich",
+    "processing": "Wird verarbeitet..."
+  },
+  "status": {
+    "title": "Status",
+    "app_instance": "App-Instanz",
+    "installation_node": "Installationsknoten",
+    "node": "Knoten",
+    "services": "Dienst | Dienste",
+    "no_services": "Keine Dienste",
+    "app_images": "App-Image | App-Images",
+    "no_images": "Keine Images",
+    "app_volumes": "App-Volume | App-Volumes",
+    "no_volumes": "Keine Volumes",
+    "name": "Name",
+    "size": "Größe",
+    "created": "Erstellt",
+    "mount": "Einhängepunkt"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "save": "Speichern",
+    "domain_name": "Domainname",
+    "domain_name_placeholder": "z.B. time.bls-isp.net",
+    "super_admin_email": "Super-Admin E-Mail",
+    "super_admin_email_placeholder": "z.B. admin@firma.de",
+    "super_admin_password": "Super-Admin Passwort",
+    "super_admin_password_placeholder": "Mindestens 6 Zeichen",
+    "configure_instance": "{instance} konfigurieren"
+  },
+  "about": {
+    "title": "Über"
+  },
+  "action": {
+    "get-status": "Status abrufen",
+    "get-configuration": "Konfiguration abrufen",
+    "configure-module": "Modul konfigurieren",
+    "get-name": "Name abrufen",
+    "list-backup-repositories": "Backup-Repositorys auflisten",
+    "list-backups": "Backups auflisten"
+  },
+  "task": {
+    "cannot_create_task": "Aufgabe {action} kann nicht erstellt werden"
+  },
+  "error": {
+    "generic_error": "Ein Fehler ist aufgetreten. Prüfen Sie die Systemlogs."
+  }
+}
