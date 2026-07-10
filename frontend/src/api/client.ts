@@ -98,7 +98,7 @@ async function request<T>(
       let message: string;
       try {
         const parsed = JSON.parse(errorBody);
-        message = parsed.message || parsed.error || errorBody;
+        message = parsed.message || (parsed.error && typeof parsed.error === 'object' ? parsed.error.message : parsed.error) || errorBody;
       } catch {
         message = errorBody || response.statusText;
       }

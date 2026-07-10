@@ -78,22 +78,22 @@ impl MigrationTrait for Migration {
         .await?;
 
         db.execute_unprepared(&format!(
-            "CREATE POLICY \"tenant_isolation_{table}_select\" ON \"{table}\" FOR SELECT USING (tenant_id = current_setting('app.current_tenant')::uuid)"
+            "CREATE POLICY \"tenant_isolation_{table}_select\" ON \"{table}\" FOR SELECT USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)"
         ))
         .await?;
 
         db.execute_unprepared(&format!(
-            "CREATE POLICY \"tenant_isolation_{table}_insert\" ON \"{table}\" FOR INSERT WITH CHECK (tenant_id = current_setting('app.current_tenant')::uuid)"
+            "CREATE POLICY \"tenant_isolation_{table}_insert\" ON \"{table}\" FOR INSERT WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)"
         ))
         .await?;
 
         db.execute_unprepared(&format!(
-            "CREATE POLICY \"tenant_isolation_{table}_update\" ON \"{table}\" FOR UPDATE USING (tenant_id = current_setting('app.current_tenant')::uuid) WITH CHECK (tenant_id = current_setting('app.current_tenant')::uuid)"
+            "CREATE POLICY \"tenant_isolation_{table}_update\" ON \"{table}\" FOR UPDATE USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid) WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)"
         ))
         .await?;
 
         db.execute_unprepared(&format!(
-            "CREATE POLICY \"tenant_isolation_{table}_delete\" ON \"{table}\" FOR DELETE USING (tenant_id = current_setting('app.current_tenant')::uuid)"
+            "CREATE POLICY \"tenant_isolation_{table}_delete\" ON \"{table}\" FOR DELETE USING (tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)"
         ))
         .await?;
 
