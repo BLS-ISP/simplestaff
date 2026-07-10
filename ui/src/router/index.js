@@ -7,10 +7,13 @@ Vue.use(VueRouter);
 
 const routes = [
   {
-    path: "/",
+    path: "/status",
     name: "Status",
     component: Status,
-    alias: "/status",
+  },
+  {
+    path: "/",
+    redirect: "/status",
   },
   {
     path: "/settings",

@@ -105,9 +105,12 @@ export default {
 
       const queryParams = this.getQueryParamsForApp();
       const requestedPage = queryParams.page || "status";
-
-      if (requestedPage != "status") {
-        this.$router.replace(requestedPage);
+      const allowedPages = ["status", "settings", "about"];
+      
+      if (allowedPages.includes(requestedPage)) {
+        this.$router.replace("/" + requestedPage).catch(() => {});
+      } else {
+        this.$router.replace("/status").catch(() => {});
       }
     } catch (e) {
       console.error("SimpleStaff: error during app initialization:", e);
