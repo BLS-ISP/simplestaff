@@ -455,9 +455,12 @@ export default {
       this.loading.listBackupRepositories = false;
     },
     listBackupRepositoriesCompleted(taskContext, taskResult) {
-      let backupRepositories = taskResult.output.repositories.sort(
-        this.sortByProperty("name")
-      );
+      let backupRepositories = [];
+      if (taskResult && taskResult.output && Array.isArray(taskResult.output.repositories)) {
+        backupRepositories = [...taskResult.output.repositories].sort(
+          this.sortByProperty("name")
+        );
+      }
       this.backupRepositories = backupRepositories;
       this.loading.listBackupRepositories = false;
       this.listBackups();
@@ -505,17 +508,20 @@ export default {
       this.loading.listBackups = false;
     },
     listBackupsCompleted(taskContext, taskResult) {
-      let backups = taskResult.output.backups;
-      backups.sort(this.sortByProperty("name"));
+      let backups = [];
+      if (taskResult && taskResult.output && Array.isArray(taskResult.output.backups)) {
+        backups = [...taskResult.output.backups];
+        backups.sort(this.sortByProperty("name"));
 
-      // get repository name
-      for (const backup of backups) {
-        const repo = this.backupRepositories.find(
-          (r) => r.id == backup.repository
-        );
+        // get repository name
+        for (const backup of backups) {
+          const repo = this.backupRepositories.find(
+            (r) => r.id == backup.repository
+          );
 
-        if (repo) {
-          backup.repoName = repo.name;
+          if (repo) {
+            backup.repoName = repo.name;
+          }
         }
       }
       this.backups = backups;
