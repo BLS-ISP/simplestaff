@@ -80,7 +80,7 @@ Nach der Installation konfigurieren wir die Umgebungsvariablen (wie Passwörter,
 1. **Konfigurationsskript ausführen (JSON übergeben):**
    Geben Sie die Ziel-Domain `time.bls-isp.net` und die Admin-Daten an. Sichere Datenbankpasswörter und Verschlüsselungs-Schlüssel werden automatisch erzeugt.
    ```bash
-   echo '{"domain_name":"time.bls-isp.net", "super_admin_email":"admin@test.local", "super_admin_password":"admin123"}' | runagent -m simplestaff1 bin/configure-module
+   echo '{"domain_name":"time.bls-isp.net", "super_admin_email":"admin@test.local", "super_admin_password":"admin123"}' | runagent -m simplestaff1 .config/bin/configure-module
    ```
 
 2. **Dienst starten (falls nicht bereits aktiv):**
@@ -123,7 +123,7 @@ runagent -m simplestaff1 podman exec simplestaff-backend /app/seed_demo
 * **Modul aktualisieren:** 
   Wenn Sie Änderungen in GitHub pushen und GitHub Actions neue Images baut, aktualisieren Sie das Modul auf dem Nethserver einfach über:
   ```bash
-  runagent -m simplestaff1 update-module.d/10_restart
+  runagent -m simplestaff1 .config/update-module.d/10_restart
   ```
   Podman zieht dabei die neuesten Container-Images aus Ihrer privaten GHCR und startet die Dienste neu.
 
