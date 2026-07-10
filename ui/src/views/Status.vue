@@ -43,15 +43,15 @@
       <cv-column :md="4" :max="4">
         <NsInfoCard
           light
-          :title="status.domain_name || $t('status.not_configured')"
+          :title="configuration.domain_name || $t('status.not_configured')"
           :description="$t('status.domain')"
           :icon="Globe32"
-          :loading="loading.getStatus"
+          :loading="loading.getConfiguration"
           class="min-height-card"
         >
           <template slot="content">
             <NsButton
-              v-if="status.app_url"
+              v-if="configuration.app_url"
               kind="ghost"
               :icon="Launch20"
               @click="openAppUrl"
@@ -72,10 +72,10 @@
       <cv-column :md="4" :max="4">
         <NsInfoCard
           light
-          :title="status.lets_encrypt ? $t('status.ssl_active') : $t('status.ssl_inactive')"
+          :title="configuration.lets_encrypt ? $t('status.ssl_active') : $t('status.ssl_inactive')"
           :description="$t('status.ssl_certificate')"
           :icon="Locked32"
-          :loading="loading.getStatus"
+          :loading="loading.getConfiguration"
           class="min-height-card"
         />
       </cv-column>
@@ -303,6 +303,15 @@ import {
   UtilService,
   PageTitleService,
 } from "@nethserver/ns8-ui-lib";
+import {
+  Globe32,
+  Launch20,
+  ArrowRight20,
+  Locked32,
+  Application32,
+  Chip32,
+  Cube32,
+} from "@carbon/icons-vue";
 
 export default {
   name: "Status",
@@ -318,28 +327,40 @@ export default {
   },
   data() {
     return {
+      Globe32,
+      Launch20,
+      ArrowRight20,
+      Locked32,
+      Application32,
+      Chip32,
+      Cube32,
       q: {
         page: "status",
       },
       urlCheckInterval: null,
       status: {
         instance: "",
-        domain_name: "",
-        app_url: "",
-        lets_encrypt: false,
+        node: "",
+        node_ui_name: "",
         services: [],
         images: [],
         volumes: [],
+      },
+      configuration: {
+        domain_name: "",
+        lets_encrypt: false,
       },
       backupRepositories: [],
       backups: [],
       loading: {
         getStatus: false,
+        getConfiguration: false,
         listBackupRepositories: false,
         listBackups: false,
       },
       error: {
         getStatus: "",
+        getConfiguration: "",
         listBackupRepositories: "",
         listBackups: "",
       },
@@ -379,6 +400,7 @@ export default {
 
   created() {
     this.getStatus();
+    this.getConfiguration();
     this.listBackupRepositories();
   },
   methods: {
@@ -426,29 +448,54 @@ export default {
     },
     getStatusCompleted(taskContext, taskResult) {
       if (taskResult && taskResult.output) {
-        this.status = {
-          instance: taskResult.output.instance || "",
-          domain_name: taskResult.output.domain_name || "",
-          app_url: taskResult.output.app_url || "",
-          lets_encrypt: taskResult.output.lets_encrypt || false,
-          services: taskResult.output.services || [],
-          images: taskResult.output.images || [],
-          volumes: taskResult.output.volumes || [],
-          node: taskResult.output.node || "",
-          node_ui_name: taskResult.output.node_ui_name || "",
-        };
-      } else {
-        this.status = {
-          instance: "",
-          domain_name: "",
-          app_url: "",
-          lets_encrypt: false,
-          services: [],
-          images: [],
-          volumes: [],
-        };
+        this.status = Object.assign({}, this.status, taskResult.output);
       }
       this.loading.getStatus = false;
+    },
+    async getConfiguration() {
+      this.loading.getConfiguration = true;
+      this.error.getConfiguration = "";
+      const taskAction = "get-configuration";
+      const eventId = this.getUuid();
+
+      this.core.$root.$once(`${taskAction}-aborted-${eventId}`, this.getConfigurationAborted);
+      this.core.$root.$once(`${taskAction}-completed-${eventId}`, this.getConfigurationCompleted);
+
+      const res = await to(
+        this.createModuleTaskForApp(this.instanceName, {
+          action: taskAction,
+          extra: {
+            title: this.$t("action." + taskAction),
+            isNotificationHidden: true,
+            eventId,
+          },
+        })
+      );
+      const err = res[0];
+
+      if (err) {
+        console.error(`error creating task ${taskAction}`, err);
+        this.error.getConfiguration = this.getErrorMessage(err);
+        this.loading.getConfiguration = false;
+      }
+    },
+    getConfigurationAborted(taskResult, taskContext) {
+      console.error(`${taskContext.action} aborted`, taskResult);
+      this.error.getConfiguration = this.$t("error.generic_error");
+      this.loading.getConfiguration = false;
+    },
+    getConfigurationCompleted(taskContext, taskResult) {
+      if (taskResult && taskResult.output) {
+        this.configuration = {
+          domain_name: taskResult.output.domain_name || "",
+          lets_encrypt: taskResult.output.lets_encrypt || false,
+        };
+        if (this.configuration.domain_name) {
+          const protocol = this.configuration.lets_encrypt ? "https" : "http";
+          this.configuration.app_url = `${protocol}://${this.configuration.domain_name}`;
+        }
+      }
+      this.loading.getConfiguration = false;
     },
     async listBackupRepositories() {
       this.loading.listBackupRepositories = true;
@@ -566,8 +613,8 @@ export default {
       this.loading.listBackups = false;
     },
     openAppUrl() {
-      if (this.status.app_url) {
-        window.open(this.status.app_url, "_blank");
+      if (this.configuration.app_url) {
+        window.open(this.configuration.app_url, "_blank");
       }
     },
   },
