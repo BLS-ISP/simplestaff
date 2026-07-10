@@ -57,9 +57,24 @@ export default function CalendarPage() {
     }
   };
 
-  const handleDownloadIcs = (employeeId: string) => {
-    const url = api.calendar.getIcsUrl(employeeId);
-    window.open(url, '_blank');
+  const handleDownloadIcs = async (employeeId: string) => {
+    try {
+      const icsText = await api.calendar.downloadIcs(employeeId);
+      const blob = new Blob([icsText], { type: 'text/calendar;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `shifts_${employeeId}.ics`);
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download ICS file:', err);
+      setError('Fehler beim Herunterladen des Kalenders.');
+    }
   };
 
   const handleGenerateSubscription = async (employeeId: string) => {

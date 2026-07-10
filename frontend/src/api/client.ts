@@ -355,13 +355,32 @@ const calendar = {
   getIcsUrl: (employeeId: string) =>
     `${API_BASE}/calendar/${employeeId}`,
 
+  downloadIcs: async (employeeId: string) => {
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${API_BASE}/calendar/${employeeId}`, {
+      headers,
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to download ICS: ${res.statusText}`);
+    }
+    return res.text();
+  },
+
   generateSubscriptionToken: (employeeId: string) =>
     request<SubscriptionTokenResponse>(`/calendar/subscribe/generate/${employeeId}`, {
       method: 'POST',
     }),
 
-  getSubscriptionUrl: (token: string) =>
-    `${API_BASE}/calendar/subscribe/${token}`,
+  getSubscriptionUrl: (token: string) => {
+    const base = API_BASE.startsWith('/')
+      ? `${window.location.origin}${API_BASE}`
+      : API_BASE;
+    return `${base}/calendar/subscribe/${token}`;
+  },
 };
 
 // ---------------------------------------------------------------------------
