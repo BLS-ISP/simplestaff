@@ -8,43 +8,94 @@
 
 import json
 import sys
-import agent
-import agent.tasks
 import os
 import secrets
+import traceback
 
-# Read JSON payload from stdin
-request = json.load(sys.stdin)
+def log_error(msg):
+    print(f"ERROR: {msg}", file=sys.stderr)
 
-# Extract required fields
-domain_name = request['domain_name']
-super_admin_email = request['super_admin_email']
-super_admin_password = request['super_admin_password']
+try:
+    # 1. Load agent and tasks libraries
+    import agent
+    import agent.tasks
+except Exception as e:
+    log_error(f"Failed to import NS8 agent library: {e}")
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)
 
-# Generate cryptographically secure secrets if not already set
-db_password = os.environ.get('DATABASE_PASSWORD', '') or secrets.token_hex(16)
-jwt_secret = os.environ.get('JWT_SECRET', '') or secrets.token_hex(32)
+try:
+    # 2. Read JSON payload from stdin
+    request = json.load(sys.stdin)
+except Exception as e:
+    log_error(f"Failed to parse input JSON from stdin: {e}")
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)
 
-# Persist all environment variables via the NS8 agent API
-agent.set_env('DOMAIN_NAME', domain_name)
-agent.set_env('SUPER_ADMIN_EMAIL', super_admin_email)
-agent.set_env('SUPER_ADMIN_PASSWORD', super_admin_password)
-agent.set_env('DATABASE_PASSWORD', db_password)
-agent.set_env('JWT_SECRET', jwt_secret)
+# Log received keys (excluding password values for security)
+received_keys = list(request.keys())
+print(f"Received configuration keys: {received_keys}", file=sys.stderr)
 
-# Ensure the postgres data volume directory exists
-os.makedirs(os.path.expanduser('~/.config/state/postgres_data'), exist_ok=True)
+try:
+    # 3. Extract fields
+    domain_name = request.get('domain_name')
+    super_admin_email = request.get('super_admin_email')
+    super_admin_password = request.get('super_admin_password')
 
-# Configure Traefik reverse proxy route for HTTPS with Let's Encrypt
-response = agent.tasks.run(
-    agent_id=agent.resolve_agent_id('traefik@node'),
-    action='set-route',
-    data={
-        'instance': os.environ['MODULE_ID'],
-        'url': 'http://127.0.0.1:' + os.environ['TCP_PORT'],
-        'host': domain_name,
-        'lets_encrypt': True,
-        'http2https': True,
-    },
-)
-agent.assert_exp(response['exit_code'] == 0, "Failed to configure Traefik route")
+    if not domain_name or not super_admin_email or not super_admin_password:
+        log_error("Missing required configuration fields in request.")
+        sys.exit(1)
+
+    # 4. Generate/Retrieve secrets
+    db_password = os.environ.get('DATABASE_PASSWORD', '') or secrets.token_hex(16)
+    jwt_secret = os.environ.get('JWT_SECRET', '') or secrets.token_hex(32)
+
+    # 5. Persist via NS8 agent
+    print("Saving configuration to agent environment...", file=sys.stderr)
+    agent.set_env('DOMAIN_NAME', domain_name)
+    agent.set_env('SUPER_ADMIN_EMAIL', super_admin_email)
+    agent.set_env('SUPER_ADMIN_PASSWORD', super_admin_password)
+    agent.set_env('DATABASE_PASSWORD', db_password)
+    agent.set_env('JWT_SECRET', jwt_secret)
+
+    # 6. Ensure state directories
+    os.makedirs(os.path.expanduser('~/.config/state/postgres_data'), exist_ok=True)
+
+    # 7. Configure Traefik
+    module_id = os.environ.get('MODULE_ID')
+    tcp_port = os.environ.get('TCP_PORT')
+
+    print(f"Configuring Traefik route for module={module_id} host={domain_name} port={tcp_port}...", file=sys.stderr)
+    
+    if not module_id or not tcp_port:
+        log_error(f"Environment variables MODULE_ID ({module_id}) or TCP_PORT ({tcp_port}) are missing!")
+        sys.exit(1)
+
+    traefik_agent_id = agent.resolve_agent_id('traefik@node')
+    print(f"Resolved Traefik agent ID: {traefik_agent_id}", file=sys.stderr)
+
+    response = agent.tasks.run(
+        agent_id=traefik_agent_id,
+        action='set-route',
+        data={
+            'instance': module_id,
+            'url': 'http://127.0.0.1:' + tcp_port,
+            'host': domain_name,
+            'lets_encrypt': True,
+            'http2https': True,
+        },
+    )
+
+    exit_code = response.get('exit_code', -1)
+    print(f"Traefik set-route completed with exit_code={exit_code}", file=sys.stderr)
+    
+    if exit_code != 0:
+        log_error(f"Traefik set-route action failed. Response output: {response.get('error', response)}")
+        sys.exit(1)
+
+    print("Module configuration completed successfully.", file=sys.stderr)
+
+except Exception as e:
+    log_error(f"Unexpected error during configuration: {e}")
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)

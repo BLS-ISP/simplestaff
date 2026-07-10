@@ -53,11 +53,50 @@ export default {
       window.addEventListener(
         "changeRoute",
         function (e) {
-          const requestedPage = e.detail;
-          context.$router.replace(requestedPage);
+          try {
+            const requestedPage = e.detail;
+            if (!requestedPage) return;
+            const allowedRoutes = ["/", "/status", "/settings", "/about"];
+            const cleanPath = "/" + requestedPage.replace(/^\/+|\/+$/g, '').split('?')[0];
+            if (allowedRoutes.includes(cleanPath)) {
+              context.$router.replace(requestedPage).catch(err => {
+                if (err && err.name !== "NavigationDuplicated") {
+                  console.warn("SimpleStaff router.replace failed:", err);
+                }
+              });
+            } else {
+              console.log("SimpleStaff: ignoring non-app changeRoute path:", requestedPage);
+            }
+          } catch (err) {
+            console.error("SimpleStaff error in changeRoute listener:", err);
+          }
         },
         false
       );
+
+      // Detect if parent URL hash leaves our app and clean up sync intervals to prevent freezes
+      setInterval(() => {
+        try {
+          const parentHash = window.parent.location.hash;
+          const appPrefix = "/apps/" + this.instanceName;
+          if (parentHash.indexOf(appPrefix) === -1) {
+            if (this.$route && this.$route.matched) {
+              this.$route.matched.forEach(route => {
+                if (route.instances && route.instances.default) {
+                  const vm = route.instances.default;
+                  if (vm.urlCheckInterval) {
+                    clearInterval(vm.urlCheckInterval);
+                    vm.urlCheckInterval = null;
+                    console.log("SimpleStaff: Cleared urlCheckInterval because parent navigated away to", parentHash);
+                  }
+                }
+              });
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }, 250);
 
       // configure global shortcuts
       if (core.$root) {
