@@ -53,8 +53,8 @@ Da wir die App-Struktur in ein Container-Bundle verpackt haben, entfällt das ma
 Führen Sie als **root-Benutzer** auf dem Nethserver-Host folgenden Befehl aus:
 
 ```bash
-# Modul-Instanz 'simplestaff1' aus der GitHub Registry erstellen
-add-module ghcr.io/bls-isp/ns8-simplestaff:latest simplestaff1
+# Modul auf Node 1 aus der GitHub Registry erstellen
+add-module ghcr.io/bls-isp/ns8-simplestaff:latest 1
 ```
 
 *Was Nethserver jetzt im Hintergrund tut:*
