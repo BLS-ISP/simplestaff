@@ -27,6 +27,7 @@ ExecStartPre=/usr/bin/podman run -d --pod simplestaff-pod --name simplestaff-db 
 
 # Start 2. Rust Backend API Container
 ExecStartPre=/usr/bin/podman run -d --pod simplestaff-pod --name simplestaff-backend \
+  --pull=always \
   -e DATABASE_URL=postgres://simplestaff:${DATABASE_PASSWORD}@127.0.0.1:5432/simplestaff \
   -e JWT_SECRET=${JWT_SECRET} \
   -e SERVER_HOST=0.0.0.0 \
@@ -38,6 +39,7 @@ ExecStartPre=/usr/bin/podman run -d --pod simplestaff-pod --name simplestaff-bac
 # Start 3. Nginx Frontend Container (Foreground process for Systemd lifecycle tracking)
 # Traefik labels integrate directly with Nethserver 8's Ingress proxy for Let's Encrypt SSL
 ExecStart=/usr/bin/podman run --pod simplestaff-pod --name simplestaff-frontend \
+  --pull=always \
   --label "traefik.enable=true" \
   --label "traefik.http.routers.simplestaff.rule=Host('${DOMAIN_NAME}')" \
   --label "traefik.http.routers.simplestaff.entrypoints=websecure" \
