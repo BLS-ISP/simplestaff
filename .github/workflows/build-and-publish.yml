@@ -1,9 +1,12 @@
-name: Build and Publish Containers
+name: Build and Publish NS8 Module
 
 on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -19,46 +22,67 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Downcase repository owner name to prevent registry push failures
-      - name: Set lower-case image names in environment
+      # Set lower-case image names
+      - name: Set image names
         run: |
           OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "BACKEND_IMAGE=${{ env.REGISTRY }}/${OWNER_LOWER}/simplestaff-backend" >> $GITHUB_ENV
           echo "FRONTEND_IMAGE=${{ env.REGISTRY }}/${OWNER_LOWER}/simplestaff-frontend" >> $GITHUB_ENV
           echo "MODULE_IMAGE=${{ env.REGISTRY }}/${OWNER_LOWER}/ns8-simplestaff" >> $GITHUB_ENV
 
-      - name: Log in to the Container registry
+      # Determine version tag: use git tag if available, otherwise 'latest'
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            # Strip leading 'v' for semantic version
+            SEMVER="${VERSION#v}"
+            echo "version=${SEMVER}" >> $GITHUB_OUTPUT
+            echo "tag=${SEMVER}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "version=latest" >> $GITHUB_OUTPUT
+            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Log in to Container registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1. Build & Push Backend Container
+      # ── 1. Build & Push Backend ──
       - name: Build and push Backend image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           file: ./backend/Dockerfile
           push: true
-          tags: ${{ env.BACKEND_IMAGE }}:latest
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ steps.version.outputs.tag }}
+            ${{ env.BACKEND_IMAGE }}:latest
 
-      # 2. Build & Push Frontend Container
+      # ── 2. Build & Push Frontend ──
       - name: Build and push Frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
-          tags: ${{ env.FRONTEND_IMAGE }}:latest
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ steps.version.outputs.tag }}
+            ${{ env.FRONTEND_IMAGE }}:latest
 
-      # 3. Build NS8 Module Admin UI (Vue.js)
-      - name: Setup Node.js for UI build
+      # ── 3. Build NS8 Admin UI ──
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Enable Corepack (Yarn)
+      - name: Enable Corepack
         run: corepack enable
 
       - name: Install UI dependencies
@@ -71,11 +95,23 @@ jobs:
         env:
           NODE_OPTIONS: --openssl-legacy-provider
 
-      # 4. Build & Push Nethserver 8 Module Installer Image (includes built UI)
-      - name: Build and push Nethserver 8 Module Installer image
+      # ── 4. Build & Push NS8 Module Installer Image ──
+      # This image contains imageroot/ + ui/dist/ and is what NS8 pulls for install/update
+      - name: Build and push NS8 Module image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ env.MODULE_IMAGE }}:latest
+          tags: |
+            ${{ env.MODULE_IMAGE }}:${{ steps.version.outputs.tag }}
+            ${{ env.MODULE_IMAGE }}:latest
+
+      # ── 5. Make packages public (first run only) ──
+      - name: Ensure packages are public
+        if: steps.version.outputs.is_release == 'false'
+        continue-on-error: true
+        run: |
+          echo "Note: If this is the first push, you may need to manually set"
+          echo "the package visibility to 'public' in GitHub Settings > Packages."
+          echo "Go to: https://github.com/orgs/${{ github.repository_owner }}/packages"

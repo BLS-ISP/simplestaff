@@ -1,11 +1,29 @@
 #!/bin/bash
 # ============================================
-# SimpleStaff - Nethserver 8 update hook
+# SimpleStaff - NS8 Update Module Hook
 # ============================================
+# This script runs after NS8 pulls a new module image.
+# It refreshes the container images referenced in the module labels
+# and restarts the service with the updated containers.
 
 set -e
+exec 1>&2  # Redirect stdout to stderr for journald logging
 
-# Restart simplestaff service on module update to reload latest container images
+echo "SimpleStaff: Update hook starting..."
+
+# Pull the latest container images referenced by org.nethserver.images label.
+# The environment file contains the image references set during create-module.
+source "${HOME}/.config/state/environment" 2>/dev/null || true
+
+# Pull fresh images to ensure we have the latest versions
+echo "SimpleStaff: Pulling updated container images..."
+podman pull "${POSTGRES_IMAGE:-docker.io/library/postgres:15-alpine}" || true
+podman pull "${SIMPLESTAFF_BACKEND_IMAGE:-ghcr.io/bls-isp/simplestaff-backend:latest}"
+podman pull "${SIMPLESTAFF_FRONTEND_IMAGE:-ghcr.io/bls-isp/simplestaff-frontend:latest}"
+
+# Restart the service with the new images
+echo "SimpleStaff: Restarting service with updated images..."
+systemctl --user daemon-reload
 systemctl --user restart simplestaff.service
 
-echo "SimpleStaff service restarted after update."
+echo "SimpleStaff: Update completed successfully."
