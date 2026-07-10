@@ -244,9 +244,13 @@ pub async fn me(
     State(state): State<AppState>,
     auth_user: AuthUser,
 ) -> Result<Json<MeResponse>, AppError> {
-    let user_model = execute_with_tenant(&state.db, &auth_user.tenant_id, |txn| {
+    let tenant_id = auth_user.tenant_id;
+    let user_id = auth_user.user_id;
+    let user_model = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            user::Entity::find_by_id(auth_user.user_id)
+            user::Entity::find()
+                .filter(user::Column::Id.eq(user_id))
+                .filter(user::Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("User not found".into()))

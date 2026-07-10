@@ -92,9 +92,11 @@ fn employee_display_name(emp: &employee::Model) -> String {
 async fn fetch_assignments_with_shift_types(
     db: &sea_orm::DatabaseTransaction,
     employee_id: Uuid,
+    tenant_id: Uuid,
 ) -> Result<Vec<(shift_assignment::Model, shift_type::Model)>, AppError> {
     let assignments = shift_assignment::Entity::find()
         .filter(shift_assignment::Column::EmployeeId.eq(employee_id))
+        .filter(shift_assignment::Column::TenantId.eq(tenant_id))
         .order_by_asc(shift_assignment::Column::AssignmentDate)
         .all(db)
         .await?;
@@ -102,7 +104,9 @@ async fn fetch_assignments_with_shift_types(
     let mut result = Vec::with_capacity(assignments.len());
 
     for assignment in assignments {
-        let st = shift_type::Entity::find_by_id(assignment.shift_type_id)
+        let st = shift_type::Entity::find()
+            .filter(shift_type::Column::Id.eq(assignment.shift_type_id))
+            .filter(shift_type::Column::TenantId.eq(tenant_id))
             .one(db)
             .await?
             .ok_or_else(|| {
@@ -124,9 +128,12 @@ async fn generate_ics_for_employee(
     tenant_id: &Uuid,
     employee_id: Uuid,
 ) -> Result<String, AppError> {
+    let tid = *tenant_id;
     execute_with_tenant(db, tenant_id, |txn| {
         Box::pin(async move {
-            let emp = employee::Entity::find_by_id(employee_id)
+            let emp = employee::Entity::find()
+                .filter(employee::Column::Id.eq(employee_id))
+                .filter(employee::Column::TenantId.eq(tid))
                 .one(txn)
                 .await?
                 .ok_or_else(|| {
@@ -134,7 +141,7 @@ async fn generate_ics_for_employee(
                 })?;
 
             let name = employee_display_name(&emp);
-            let assignments = fetch_assignments_with_shift_types(txn, employee_id).await?;
+            let assignments = fetch_assignments_with_shift_types(txn, employee_id, tid).await?;
             Ok(build_ics(&name, &assignments))
         })
     })
@@ -231,14 +238,18 @@ pub async fn generate_subscription_token(
     if auth_user.role == "viewer" {
         let is_own_profile = execute_with_tenant(&state.db, &tenant_id, |txn| {
             let user_id = auth_user.user_id;
+            let tid = tenant_id;
             Box::pin(async move {
-                let user_model = user::Entity::find_by_id(user_id)
+                let user_model = user::Entity::find()
+                    .filter(user::Column::Id.eq(user_id))
+                    .filter(user::Column::TenantId.eq(tid))
                     .one(txn)
                     .await?
                     .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
                 
                 let emp_model = employee::Entity::find()
                     .filter(employee::Column::Email.eq(user_model.email))
+                    .filter(employee::Column::TenantId.eq(tid))
                     .one(txn)
                     .await?;
                 
@@ -258,8 +269,11 @@ pub async fn generate_subscription_token(
 
     // Verify the employee exists within the tenant.
     execute_with_tenant(&state.db, &tenant_id, |txn| {
+        let tid = tenant_id;
         Box::pin(async move {
-            employee::Entity::find_by_id(employee_id)
+            employee::Entity::find()
+                .filter(employee::Column::Id.eq(employee_id))
+                .filter(employee::Column::TenantId.eq(tid))
                 .one(txn)
                 .await?
                 .ok_or_else(|| {

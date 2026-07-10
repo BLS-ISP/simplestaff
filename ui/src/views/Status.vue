@@ -43,6 +43,45 @@
       <cv-column :md="4" :max="4">
         <NsInfoCard
           light
+          :title="status.domain_name || $t('status.not_configured')"
+          :description="$t('status.domain')"
+          :icon="Globe32"
+          :loading="loading.getStatus"
+          class="min-height-card"
+        >
+          <template slot="content">
+            <NsButton
+              v-if="status.app_url"
+              kind="ghost"
+              :icon="Launch20"
+              @click="openAppUrl"
+            >
+              {{ $t('status.open_app') }}
+            </NsButton>
+            <NsButton
+              v-else
+              kind="ghost"
+              :icon="ArrowRight20"
+              @click="goToAppPage(instanceName, 'settings')"
+            >
+              {{ $t('status.configure') }}
+            </NsButton>
+          </template>
+        </NsInfoCard>
+      </cv-column>
+      <cv-column :md="4" :max="4">
+        <NsInfoCard
+          light
+          :title="status.lets_encrypt ? $t('status.ssl_active') : $t('status.ssl_inactive')"
+          :description="$t('status.ssl_certificate')"
+          :icon="Locked32"
+          :loading="loading.getStatus"
+          class="min-height-card"
+        />
+      </cv-column>
+      <cv-column :md="4" :max="4">
+        <NsInfoCard
+          light
           :title="status.instance || '-'"
           :description="$t('status.app_instance')"
           :icon="Application32"
@@ -283,10 +322,11 @@ export default {
         page: "status",
       },
       urlCheckInterval: null,
-      isRedirectChecked: false,
-      redirectTimeout: 0,
       status: {
         instance: "",
+        domain_name: "",
+        app_url: "",
+        lets_encrypt: false,
         services: [],
         images: [],
         volumes: [],
@@ -336,15 +376,7 @@ export default {
     clearInterval(this.urlCheckInterval);
     next();
   },
-  mounted() {
-    this.redirectTimeout = setTimeout(
-      () => (this.isRedirectChecked = true),
-      200
-    );
-  },
-  beforeUnmount() {
-    clearTimeout(this.redirectTimeout);
-  },
+
   created() {
     this.getStatus();
     this.listBackupRepositories();
@@ -396,6 +428,9 @@ export default {
       if (taskResult && taskResult.output) {
         this.status = {
           instance: taskResult.output.instance || "",
+          domain_name: taskResult.output.domain_name || "",
+          app_url: taskResult.output.app_url || "",
+          lets_encrypt: taskResult.output.lets_encrypt || false,
           services: taskResult.output.services || [],
           images: taskResult.output.images || [],
           volumes: taskResult.output.volumes || [],
@@ -405,6 +440,9 @@ export default {
       } else {
         this.status = {
           instance: "",
+          domain_name: "",
+          app_url: "",
+          lets_encrypt: false,
           services: [],
           images: [],
           volumes: [],
@@ -526,6 +564,11 @@ export default {
       }
       this.backups = backups;
       this.loading.listBackups = false;
+    },
+    openAppUrl() {
+      if (this.status.app_url) {
+        window.open(this.status.app_url, "_blank");
+      }
     },
   },
 };

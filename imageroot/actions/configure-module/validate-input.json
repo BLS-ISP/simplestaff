@@ -22,6 +22,16 @@
             "title": "Super admin password",
             "description": "Password for the super admin account",
             "minLength": 6
+        },
+        "lets_encrypt": {
+            "type": "boolean",
+            "title": "Request Let's Encrypt certificate",
+            "description": "If true, Traefik will request a free SSL certificate from Let's Encrypt for the configured domain"
+        },
+        "http2https": {
+            "type": "boolean",
+            "title": "HTTP to HTTPS redirect",
+            "description": "If true, HTTP requests will be redirected to HTTPS"
         }
     }
 }

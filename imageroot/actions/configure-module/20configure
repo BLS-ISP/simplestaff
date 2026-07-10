@@ -41,10 +41,16 @@ try:
     domain_name = request.get('domain_name')
     super_admin_email = request.get('super_admin_email')
     super_admin_password = request.get('super_admin_password')
+    lets_encrypt = request.get('lets_encrypt', True)
+    http2https = request.get('http2https', True)
 
     if not domain_name or not super_admin_email or not super_admin_password:
         log_error("Missing required configuration fields in request.")
         sys.exit(1)
+
+    # Ensure booleans
+    lets_encrypt = bool(lets_encrypt)
+    http2https = bool(http2https)
 
     # 4. Generate/Retrieve secrets
     db_password = os.environ.get('DATABASE_PASSWORD', '') or secrets.token_hex(16)
@@ -57,6 +63,8 @@ try:
     agent.set_env('SUPER_ADMIN_PASSWORD', super_admin_password)
     agent.set_env('DATABASE_PASSWORD', db_password)
     agent.set_env('JWT_SECRET', jwt_secret)
+    agent.set_env('LETS_ENCRYPT', str(lets_encrypt))
+    agent.set_env('HTTP2HTTPS', str(http2https))
 
     # 6. Ensure state directories
     os.makedirs(os.path.expanduser('~/.config/state/postgres_data'), exist_ok=True)
@@ -65,7 +73,7 @@ try:
     module_id = os.environ.get('MODULE_ID')
     tcp_port = os.environ.get('TCP_PORT')
 
-    print(f"Configuring Traefik route for module={module_id} host={domain_name} port={tcp_port}...", file=sys.stderr)
+    print(f"Configuring Traefik route for module={module_id} host={domain_name} port={tcp_port} lets_encrypt={lets_encrypt} http2https={http2https}...", file=sys.stderr)
     
     if not module_id or not tcp_port:
         log_error(f"Environment variables MODULE_ID ({module_id}) or TCP_PORT ({tcp_port}) are missing!")
@@ -81,8 +89,8 @@ try:
             'instance': module_id,
             'url': 'http://127.0.0.1:' + tcp_port,
             'host': domain_name,
-            'lets_encrypt': True,
-            'http2https': True,
+            'lets_encrypt': lets_encrypt,
+            'http2https': http2https,
         },
     )
 

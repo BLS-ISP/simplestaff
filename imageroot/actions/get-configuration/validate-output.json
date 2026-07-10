@@ -15,6 +15,14 @@
         "super_admin_password": {
             "type": "string",
             "title": "Super admin password"
+        },
+        "lets_encrypt": {
+            "type": "boolean",
+            "title": "Let's Encrypt SSL certificate"
+        },
+        "http2https": {
+            "type": "boolean",
+            "title": "HTTP to HTTPS redirect"
         }
     }
 }

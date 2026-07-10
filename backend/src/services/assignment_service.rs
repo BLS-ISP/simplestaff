@@ -31,7 +31,8 @@ pub async fn create_assignment_with_validation(
     tenant_id: Uuid,
 ) -> Result<(shift_assignment::Model, Vec<ValidationWarning>), AppError> {
     // 1. Load tenant settings from the tenants table.
-    let tenant_model = tenant::Entity::find_by_id(tenant_id)
+    let tenant_model = tenant::Entity::find()
+        .filter(tenant::Column::Id.eq(tenant_id))
         .one(txn)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Tenant {tenant_id} not found")))?;
@@ -81,11 +82,12 @@ pub async fn create_assignment_with_validation(
 pub async fn get_weekly_assignments(
     txn: &sea_orm::DatabaseTransaction,
     date: NaiveDate,
+    tenant_id: Uuid,
 ) -> Result<Vec<(shift_assignment::Model, shift_type::Model, employee::Model)>, AppError> {
     let monday = date - Duration::days(date.weekday().num_days_from_monday() as i64);
     let sunday = monday + Duration::days(6);
 
-    fetch_assignments_in_range(txn, monday, sunday).await
+    fetch_assignments_in_range(txn, monday, sunday, tenant_id).await
 }
 
 /// Fetch all shift assignments for a given calendar month, joined with their
@@ -94,6 +96,7 @@ pub async fn get_monthly_assignments(
     txn: &sea_orm::DatabaseTransaction,
     year: i32,
     month: u32,
+    tenant_id: Uuid,
 ) -> Result<Vec<(shift_assignment::Model, shift_type::Model, employee::Model)>, AppError> {
     let first_day = NaiveDate::from_ymd_opt(year, month, 1)
         .ok_or_else(|| AppError::BadRequest(format!("Invalid year/month: {year}/{month}")))?;
@@ -107,7 +110,7 @@ pub async fn get_monthly_assignments(
     .ok_or_else(|| AppError::BadRequest(format!("Invalid year/month: {year}/{month}")))?
         - Duration::days(1);
 
-    fetch_assignments_in_range(txn, first_day, last_day).await
+    fetch_assignments_in_range(txn, first_day, last_day, tenant_id).await
 }
 
 /// Internal helper: load assignments in a date range and resolve their
@@ -116,8 +119,10 @@ async fn fetch_assignments_in_range(
     txn: &sea_orm::DatabaseTransaction,
     start: NaiveDate,
     end: NaiveDate,
+    tenant_id: Uuid,
 ) -> Result<Vec<(shift_assignment::Model, shift_type::Model, employee::Model)>, AppError> {
     let assignments = shift_assignment::Entity::find()
+        .filter(shift_assignment::Column::TenantId.eq(tenant_id))
         .filter(shift_assignment::Column::AssignmentDate.gte(start))
         .filter(shift_assignment::Column::AssignmentDate.lte(end))
         .filter(shift_assignment::Column::Status.ne("cancelled"))
@@ -128,7 +133,9 @@ async fn fetch_assignments_in_range(
         Vec::with_capacity(assignments.len());
 
     for assignment in assignments {
-        let st = shift_type::Entity::find_by_id(assignment.shift_type_id)
+        let st = shift_type::Entity::find()
+            .filter(shift_type::Column::Id.eq(assignment.shift_type_id))
+            .filter(shift_type::Column::TenantId.eq(tenant_id))
             .one(txn)
             .await?
             .ok_or_else(|| {
@@ -138,7 +145,9 @@ async fn fetch_assignments_in_range(
                 ))
             })?;
 
-        let emp = employee::Entity::find_by_id(assignment.employee_id)
+        let emp = employee::Entity::find()
+            .filter(employee::Column::Id.eq(assignment.employee_id))
+            .filter(employee::Column::TenantId.eq(tenant_id))
             .one(txn)
             .await?
             .ok_or_else(|| {

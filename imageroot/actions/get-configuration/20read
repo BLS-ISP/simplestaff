@@ -23,10 +23,15 @@ except Exception as e:
 
 try:
     # Read environment variables loaded by runagent from state/environment
+    lets_encrypt_str = os.environ.get('LETS_ENCRYPT', 'True')
+    http2https_str = os.environ.get('HTTP2HTTPS', 'True')
+
     config = {
         "domain_name": os.environ.get('DOMAIN_NAME', ''),
         "super_admin_email": os.environ.get('SUPER_ADMIN_EMAIL', ''),
         "super_admin_password": os.environ.get('SUPER_ADMIN_PASSWORD', ''),
+        "lets_encrypt": lets_encrypt_str.lower() in ('true', '1', 'yes'),
+        "http2https": http2https_str.lower() in ('true', '1', 'yes'),
     }
 
     # Print to stdout (which is captured by NS8 task runner as output)

@@ -35,20 +35,42 @@ export default {
       }
       this.setCoreInStore(core);
 
-      // Safely extract instance name from parent URL href (supports both hash and history routing)
-      const urlMatch = /\/apps\/([a-zA-Z0-9_-]+)/.exec(
-        window.parent.location.href
-      );
-      if (!urlMatch || !urlMatch[1]) {
-        console.error("SimpleStaff: could not extract instance name from parent URL:", window.parent.location.href);
+      // Extract instance name from parent URL — support both hash-based and
+      // history-based routing used by different NS8 core versions.
+      let instanceName = "";
+      try {
+        // Try hash-based routing first (standard NS8 pattern)
+        const hashMatch = /#\/apps\/(\w+)/.exec(window.parent.location.hash);
+        if (hashMatch && hashMatch[1]) {
+          instanceName = hashMatch[1];
+        }
+      } catch (_e) {
+        // ignore
+      }
+
+      if (!instanceName) {
+        // Fall back to path-based routing
+        const pathMatch = /\/apps\/([a-zA-Z0-9_-]+)/.exec(
+          window.parent.location.href
+        );
+        if (pathMatch && pathMatch[1]) {
+          instanceName = pathMatch[1];
+        }
+      }
+
+      if (!instanceName) {
+        console.error(
+          "SimpleStaff: could not extract instance name from parent URL:",
+          window.parent.location.href
+        );
         return;
       }
-      const instanceName = urlMatch[1];
+
       this.setInstanceNameInStore(instanceName);
       this.getInstanceLabel();
       this.setAppName();
 
-      // listen to change route events
+      // Listen to changeRoute events from the NS8 core
       const context = this;
       window.addEventListener(
         "changeRoute",
@@ -56,17 +78,11 @@ export default {
           try {
             const requestedPage = e.detail;
             if (!requestedPage) return;
-            const allowedRoutes = ["/", "/status", "/settings", "/about"];
-            const cleanPath = "/" + requestedPage.replace(/^\/+|\/+$/g, '').split('?')[0];
-            if (allowedRoutes.includes(cleanPath)) {
-              context.$router.replace(requestedPage).catch(err => {
-                if (err && err.name !== "NavigationDuplicated") {
-                  console.warn("SimpleStaff router.replace failed:", err);
-                }
-              });
-            } else {
-              console.log("SimpleStaff: ignoring non-app changeRoute path:", requestedPage);
-            }
+            context.$router.replace(requestedPage).catch((err) => {
+              if (err && err.name !== "NavigationDuplicated") {
+                console.warn("SimpleStaff router.replace failed:", err);
+              }
+            });
           } catch (err) {
             console.error("SimpleStaff error in changeRoute listener:", err);
           }
@@ -74,31 +90,7 @@ export default {
         false
       );
 
-      // Detect if parent URL leaves our app and clean up sync intervals to prevent freezes
-      setInterval(() => {
-        try {
-          const parentHref = window.parent.location.href;
-          const appPrefix = "/apps/" + this.instanceName;
-          if (parentHref.indexOf(appPrefix) === -1) {
-            if (this.$route && this.$route.matched) {
-              this.$route.matched.forEach(route => {
-                if (route.instances && route.instances.default) {
-                  const vm = route.instances.default;
-                  if (vm.urlCheckInterval) {
-                    clearInterval(vm.urlCheckInterval);
-                    vm.urlCheckInterval = null;
-                    console.log("SimpleStaff: Cleared urlCheckInterval because parent navigated away to", parentHref);
-                  }
-                }
-              });
-            }
-          }
-        } catch (e) {
-          // ignore
-        }
-      }, 250);
-
-      // configure global shortcuts
+      // Configure global shortcuts
       if (core.$root) {
         core.$root.$emit("configureKeyboardShortcuts", window);
       }
@@ -106,7 +98,7 @@ export default {
       const queryParams = this.getQueryParamsForApp();
       const requestedPage = queryParams.page || "status";
       const allowedPages = ["status", "settings", "about"];
-      
+
       if (allowedPages.includes(requestedPage)) {
         this.$router.replace("/" + requestedPage).catch(() => {});
       } else {
