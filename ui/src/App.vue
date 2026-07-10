@@ -35,15 +35,15 @@ export default {
       }
       this.setCoreInStore(core);
 
-      // Safely extract instance name from parent URL hash
-      const hashMatch = /#\/apps\/([a-zA-Z0-9_-]+)/.exec(
-        window.parent.location.hash
+      // Safely extract instance name from parent URL href (supports both hash and history routing)
+      const urlMatch = /\/apps\/([a-zA-Z0-9_-]+)/.exec(
+        window.parent.location.href
       );
-      if (!hashMatch || !hashMatch[1]) {
-        console.error("SimpleStaff: could not extract instance name from URL hash:", window.parent.location.hash);
+      if (!urlMatch || !urlMatch[1]) {
+        console.error("SimpleStaff: could not extract instance name from parent URL:", window.parent.location.href);
         return;
       }
-      const instanceName = hashMatch[1];
+      const instanceName = urlMatch[1];
       this.setInstanceNameInStore(instanceName);
       this.getInstanceLabel();
       this.setAppName();
@@ -74,12 +74,12 @@ export default {
         false
       );
 
-      // Detect if parent URL hash leaves our app and clean up sync intervals to prevent freezes
+      // Detect if parent URL leaves our app and clean up sync intervals to prevent freezes
       setInterval(() => {
         try {
-          const parentHash = window.parent.location.hash;
+          const parentHref = window.parent.location.href;
           const appPrefix = "/apps/" + this.instanceName;
-          if (parentHash.indexOf(appPrefix) === -1) {
+          if (parentHref.indexOf(appPrefix) === -1) {
             if (this.$route && this.$route.matched) {
               this.$route.matched.forEach(route => {
                 if (route.instances && route.instances.default) {
@@ -87,7 +87,7 @@ export default {
                   if (vm.urlCheckInterval) {
                     clearInterval(vm.urlCheckInterval);
                     vm.urlCheckInterval = null;
-                    console.log("SimpleStaff: Cleared urlCheckInterval because parent navigated away to", parentHash);
+                    console.log("SimpleStaff: Cleared urlCheckInterval because parent navigated away to", parentHref);
                   }
                 }
               });
