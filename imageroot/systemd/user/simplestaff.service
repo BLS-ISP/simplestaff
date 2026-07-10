@@ -1,0 +1,53 @@
+# ============================================
+# SimpleStaff - Nethserver 8 Systemd Service
+# ============================================
+
+[Unit]
+Description=SimpleStaff Application Pod
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/state/environment
+
+# Clean up any existing pod/containers
+ExecStartPre=-/usr/bin/podman pod rm -f simplestaff-pod
+ExecStartPre=-/usr/bin/podman rm -f simplestaff-db simplestaff-backend simplestaff-frontend
+
+# Create shared Podman Pod (Expose port 80 to Traefik, share localhost loopback)
+ExecStartPre=/usr/bin/podman pod create --name simplestaff-pod -p 8080:80
+
+# Start 1. PostgreSQL Database Container
+ExecStartPre=/usr/bin/podman run -d --pod simplestaff-pod --name simplestaff-db \
+  -e POSTGRES_USER=simplestaff \
+  -e POSTGRES_PASSWORD=${DATABASE_PASSWORD} \
+  -e POSTGRES_DB=simplestaff \
+  -v %h/.config/state/postgres_data:/var/lib/postgresql/data:Z \
+  docker.io/library/postgres:15-alpine
+
+# Start 2. Rust Backend API Container
+ExecStartPre=/usr/bin/podman run -d --pod simplestaff-pod --name simplestaff-backend \
+  -e DATABASE_URL=postgres://simplestaff:${DATABASE_PASSWORD}@127.0.0.1:5432/simplestaff \
+  -e JWT_SECRET=${JWT_SECRET} \
+  -e SERVER_HOST=0.0.0.0 \
+  -e SERVER_PORT=8080 \
+  -e SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL} \
+  -e SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD} \
+  ghcr.io/bls-isp/simplestaff-backend:latest
+
+# Start 3. Nginx Frontend Container (Foreground process for Systemd lifecycle tracking)
+# Traefik labels integrate directly with Nethserver 8's Ingress proxy for Let's Encrypt SSL
+ExecStart=/usr/bin/podman run --pod simplestaff-pod --name simplestaff-frontend \
+  --label "traefik.enable=true" \
+  --label "traefik.http.routers.simplestaff.rule=Host('${DOMAIN_NAME}')" \
+  --label "traefik.http.routers.simplestaff.entrypoints=websecure" \
+  --label "traefik.http.routers.simplestaff.tls.certresolver=default" \
+  --label "traefik.http.services.simplestaff.loadbalancer.server.port=80" \
+  ghcr.io/bls-isp/simplestaff-frontend:latest
+
+# Stop & Cleanup on service stop
+ExecStop=/usr/bin/podman pod stop simplestaff-pod
+ExecStopPost=/usr/bin/podman pod rm -f simplestaff-pod
+
+[Install]
+WantedBy=default.target

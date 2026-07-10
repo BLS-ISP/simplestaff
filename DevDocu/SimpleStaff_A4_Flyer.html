@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimpleStaff – B2B Produktflyer (A4)</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+
+    :root {
+      --bg: #07080c;
+      --bg-elevated: #0f1016;
+      --card-bg: rgba(255, 255, 255, 0.02);
+      --border: rgba(255, 255, 255, 0.07);
+      --border-accent: rgba(139, 92, 246, 0.3);
+      --accent: #8b5cf6;
+      --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --shadow-glow: 0 0 30px rgba(139, 92, 246, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #030305;
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+
+    /* DIN A4 Container (210mm x 297mm) */
+    .flyer {
+      background-color: var(--bg);
+      width: 210mm;
+      height: 297mm;
+      padding: 2.5rem;
+      border-radius: 24px;
+      box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6), 0 0 50px rgba(139, 92, 246, 0.15);
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    /* Ambient lights */
+    .flyer::before {
+      content: "";
+      position: absolute;
+      top: -120px;
+      left: -120px;
+      width: 350px;
+      height: 350px;
+      background: radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .flyer::after {
+      content: "";
+      position: absolute;
+      bottom: -120px;
+      right: -120px;
+      width: 350px;
+      height: 350px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-family: 'Outfit', sans-serif;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .logo-icon {
+      background: var(--accent-gradient);
+      width: 38px;
+      height: 38px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      color: #fff;
+      font-weight: 800;
+    }
+
+    .logo span {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-tagline {
+      text-align: right;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .header-tagline strong {
+      color: var(--accent);
+    }
+
+    /* ── MAIN SPLIT LAYOUT ── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.25fr 0.75fr;
+      gap: 1.8rem;
+      flex-grow: 1;
+      margin-bottom: 1.5rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Left side: Core modules */
+    .left-column {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 1.2rem;
+    }
+
+    .section-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.3rem;
+    }
+
+    .section-title span {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .section-desc {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    /* Features 2x2 Grid */
+    .features-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.8rem;
+    }
+
+    .feature-item {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 0.85rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      transition: all 0.3s ease;
+    }
+
+    .feature-item:hover {
+      border-color: var(--border-accent);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+
+    .feature-body h4 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.15rem;
+    }
+
+    .feature-body p {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
+
+    /* Desktop Mockup */
+    .desktop-mockup {
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-glow);
+      background: var(--bg-elevated);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .browser-bar {
+      background: rgba(255,255,255,0.02);
+      padding: 6px 12px;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .browser-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .browser-url {
+      font-size: 0.65rem;
+      color: var(--text-secondary);
+      margin-left: 10px;
+      font-family: monospace;
+    }
+
+    .browser-content img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Right side: Rois, Mockup & CTA */
+    .right-column {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 1.2rem;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.8rem;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 0.8rem;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 800;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.15rem;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.1rem;
+    }
+
+    .stat-desc {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      line-height: 1.2;
+    }
+
+    /* Mini Mockup */
+    .mockup-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .mockup-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .phone-preview {
+      width: 120px;
+      height: 165px;
+      background: #000;
+      border: 3px solid #222;
+      border-radius: 18px;
+      padding: 5px;
+      position: relative;
+    }
+
+    .phone-screen {
+      background: #090a0e;
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
+      padding: 5px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    .phone-header {
+      font-size: 0.4rem;
+      color: var(--text-muted);
+      text-align: center;
+      margin-bottom: 2px;
+    }
+
+    .phone-badge {
+      background: rgba(139, 92, 246, 0.12);
+      border-left: 2px solid var(--accent);
+      border-radius: 3px;
+      padding: 3px;
+      margin-bottom: 3px;
+    }
+
+    .phone-badge-title {
+      font-size: 0.45rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .phone-badge-time {
+      font-size: 0.38rem;
+      color: var(--text-muted);
+    }
+
+    .phone-qr {
+      border-top: 1px dashed rgba(255,255,255,0.08);
+      padding-top: 3px;
+      text-align: center;
+    }
+
+    .phone-qr p {
+      font-size: 0.38rem;
+      color: var(--text-secondary);
+      margin-bottom: 1px;
+    }
+
+    .qr-box {
+      width: 20px;
+      height: 20px;
+      background: #fff;
+      margin: 0 auto;
+      padding: 1px;
+    }
+
+    .qr-box div {
+      width: 100%;
+      height: 100%;
+      background: repeating-linear-gradient(45deg, #000 0px, #000 1px, #fff 1px, #fff 2px);
+    }
+
+    /* Starten Section */
+    .starten-card {
+      background: rgba(139, 92, 246, 0.05);
+      border: 1px dashed var(--border-accent);
+      border-radius: var(--radius-lg);
+      padding: 1rem;
+    }
+
+    .starten-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+
+    .start-step {
+      display: flex;
+      gap: 0.6rem;
+      margin-bottom: 0.5rem;
+      font-size: 0.75rem;
+      line-height: 1.35;
+    }
+
+    .start-step:last-child {
+      margin-bottom: 0;
+    }
+
+    .start-step span {
+      background: var(--accent-gradient);
+      color: #fff;
+      font-weight: 700;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      flex-shrink: 0;
+    }
+
+    /* ── FOOTER ── */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding-top: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    .footer-text {
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      line-height: 1.35;
+    }
+
+    .footer-text strong {
+      color: var(--text);
+    }
+
+    .footer-url {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: #fff;
+      background: var(--accent-gradient);
+      padding: 0.5rem 1.1rem;
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      box-shadow: 0 4px 10px rgba(139, 92, 246, 0.2);
+    }
+
+    /* ── PRINT MEDIA STYLES ── */
+    @media print {
+      body {
+        background: none;
+        padding: 0;
+      }
+      .flyer {
+        width: 210mm;
+        height: 297mm;
+        border-radius: 0;
+        box-shadow: none;
+        border: none;
+        background: #fff !important;
+        color: #000 !important;
+      }
+      .logo span, .section-title span, .stat-value, .mockup-title, .starten-title, .footer-url {
+        -webkit-text-fill-color: initial !important;
+        color: #8b5cf6 !important;
+        background: none !important;
+      }
+      .feature-item, .stat-card, .mockup-card, .phone-preview, .starten-card, .desktop-mockup {
+        background: #fff !important;
+        border: 1px solid #ddd !important;
+        box-shadow: none !important;
+        color: #000 !important;
+      }
+      .phone-screen {
+        background: #f9f9f9 !important;
+      }
+      .phone-badge {
+        background: #eee !important;
+        border-left: 2px solid #8b5cf6 !important;
+      }
+      .start-step span {
+        background: #8b5cf6 !important;
+        color: #fff !important;
+      }
+      .feature-body p, .section-desc, .stat-desc, .footer-text, .start-step p {
+        color: #444 !important;
+      }
+      .feature-body h4, .stat-label, .footer-text strong, .phone-badge-title {
+        color: #000 !important;
+      }
+      .footer-url {
+        border: 1px solid #8b5cf6 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- DIN A4 Flyer Card -->
+  <div class="flyer">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <div class="logo-icon">S</div>
+        Simple<span>Staff</span>
+      </div>
+      <div class="header-tagline">
+        Intelligentes Shift Management<br>
+        <strong>Live-Demo unter time.bls-isp.net</strong>
+      </div>
+    </div>
+
+    <!-- Main Grid Content -->
+    <div class="main-grid">
+      
+      <!-- Left Column: Core Modules -->
+      <div class="left-column">
+        <div>
+          <h2 class="section-title">Automatisch. Sicher.<br><span>Gesetzeskonform.</span></h2>
+          <p class="section-desc">Die modular aufgebaute SaaS-Lösung für fehlerfreie Dienstplanung, Echtzeit-ArbZG-Prüfung und digitale Zeiteinsparung im Schichtbetrieb.</p>
+        </div>
+
+        <div class="features-list">
+          <!-- Item 1 -->
+          <div class="feature-item">
+            <div class="feature-icon">🤖</div>
+            <div class="feature-body">
+              <h4>Auto-Scheduler</h4>
+              <p>Generieren Sie komplette Dienstpläne auf Knopfdruck. Abgleich von Soll-Stunden und Wünschen.</p>
+            </div>
+          </div>
+
+          <!-- Item 2 -->
+          <div class="feature-item">
+            <div class="feature-icon">⚖️</div>
+            <div class="feature-body">
+              <h4>ArbZG-Validierung</h4>
+              <p>Echtzeitprüfung auf 11h Ruhezeit, Pausen und tägliche Höchstarbeitszeit.</p>
+            </div>
+          </div>
+
+          <!-- Item 3 -->
+          <div class="feature-item">
+            <div class="feature-icon">🌴</div>
+            <div class="feature-body">
+              <h4>Urlaubs-Self-Service</h4>
+              <p>Mitarbeiter reichen Urlaube mobil ein; Saldo-Abzug filtert freie Tage automatisch.</p>
+            </div>
+          </div>
+
+          <!-- Item 4 -->
+          <div class="feature-item">
+            <div class="feature-icon">🔀</div>
+            <div class="feature-body">
+              <h4>Schicht-Tauschbörse</h4>
+              <p>Mitarbeiter tauschen Schichten untereinander mit automatischer Gesetzesprüfung.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Desktop Mockup Browser Frame -->
+        <div class="desktop-mockup">
+          <div class="browser-bar">
+            <span class="browser-dot" style="background-color: #ff5f56;"></span>
+            <span class="browser-dot" style="background-color: #ffbd2e;"></span>
+            <span class="browser-dot" style="background-color: #27c93f;"></span>
+            <span class="browser-url">time.bls-isp.net/shift-plan</span>
+          </div>
+          <div class="browser-content">
+            <img src="media/media_roster.png" alt="SimpleStaff Roster Grid Preview">
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Rois, Mockup & CTA -->
+      <div class="right-column">
+        <!-- Stats -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">-80%</div>
+            <div class="stat-label">Planungszeit</div>
+            <div class="stat-desc">Dienstpläne in Sekunden fertig.</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">0%</div>
+            <div class="stat-label">Bußgeldrisiko</div>
+            <div class="stat-desc">Gesetzeskonforme Echtzeitprüfung.</div>
+          </div>
+        </div>
+
+        <!-- Phone Mockup Card -->
+        <div class="mockup-card">
+          <div class="mockup-title">Immer Synchron</div>
+          <div class="phone-preview">
+            <div class="phone-screen">
+              <div class="phone-header">SimpleStaff Live</div>
+              <div>
+                <div class="phone-badge">
+                  <div class="phone-badge-title">Spätschicht</div>
+                  <div class="phone-badge-time">Morgen, 14:00 - 22:00</div>
+                </div>
+                <div class="phone-badge" style="background: rgba(59,130,246,0.1); border-left-color: #3b82f6;">
+                  <div class="phone-badge-title" style="color: #3b82f6;">Tauschanfrage</div>
+                  <div class="phone-badge-time">Frühdienst abzugeben</div>
+                </div>
+              </div>
+              <div class="phone-qr">
+                <p>Kalender-Abo</p>
+                <div class="qr-box">
+                  <div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- So starten Sie Card -->
+        <div class="starten-card">
+          <h4 class="starten-title">In 3 Schritten starten</h4>
+          <div class="start-step">
+            <span>1</span>
+            <p><strong>Mitarbeiter anlegen:</strong> Profildaten inklusive E-Mail-Adresse eintragen.</p>
+          </div>
+          <div class="start-step">
+            <span>2</span>
+            <p><strong>Login freischalten:</strong> Wunschpasswort direkt im Profil vergeben.</p>
+          </div>
+          <div class="start-step">
+            <span>3</span>
+            <p><strong>Dienstplan generieren:</strong> Pläne per Auto-Scheduler befüllen.</p>
+          </div>
+        </div>
+      </div>
+      
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div class="footer-text">
+        SimpleStaff B2B HR-Plattform. Cloud-Infrastruktur auf Enterprise-Niveau.<br>
+        PostgreSQL <strong>Row-Level Security (RLS)</strong> zum Schutz Ihrer Mandantendaten.
+      </div>
+      <a href="https://time.bls-isp.net/login" class="footer-url">Demo ansehen</a>
+    </div>
+  </div>
+</body>
+</html>

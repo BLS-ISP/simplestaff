@@ -1,0 +1,5 @@
+# Rust compilation target directory
+target/
+
+# Local environment variables
+.env

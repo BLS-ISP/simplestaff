@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimpleStaff – Dein Dienstplan</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+
+    :root {
+      --bg: #090a0f;
+      --bg-elevated: #111218;
+      --card-bg: rgba(255, 255, 255, 0.02);
+      --card-hover: rgba(255, 255, 255, 0.05);
+      --border: rgba(255, 255, 255, 0.07);
+      --border-accent: rgba(139, 92, 246, 0.3);
+      --accent: #8b5cf6;
+      --accent-glow: rgba(139, 92, 246, 0.2);
+      --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #3b82f6 100%);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --radius-lg: 16px;
+      --radius-md: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #050508;
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    /* DIN A5 Flyer Container (148mm x 210mm) */
+    .flyer {
+      background-color: var(--bg);
+      width: 148mm;
+      height: 210mm;
+      padding: 2.2rem;
+      border-radius: 24px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 40px rgba(139, 92, 246, 0.1);
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    /* Ambient background lights */
+    .flyer::before {
+      content: "";
+      position: absolute;
+      top: -80px;
+      left: -80px;
+      width: 250px;
+      height: 250px;
+      background: radial-gradient(circle, rgba(139, 92, 246, 0.25) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .flyer::after {
+      content: "";
+      position: absolute;
+      bottom: -80px;
+      right: -80px;
+      width: 250px;
+      height: 250px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.2rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-icon {
+      background: var(--accent-gradient);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      color: #fff;
+      font-weight: 800;
+    }
+
+    .logo span {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .badge-mobile {
+      background: rgba(139, 92, 246, 0.12);
+      border: 1px solid var(--border-accent);
+      color: var(--accent);
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .intro-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.2rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    .intro-title span {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* ── FEATURES GRID ── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.8rem;
+      margin-bottom: 1.5rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    .feature-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 0.85rem;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      transition: all 0.2s ease;
+    }
+
+    .feature-card:hover {
+      background: var(--card-hover);
+      border-color: var(--border-accent);
+    }
+
+    .feature-emoji {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+
+    .feature-text h4 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .feature-text p {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    /* ── SPLIT WORKFLOW & MOCKUP ── */
+    .content-split {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 1.2rem;
+      margin-bottom: 1.2rem;
+      align-items: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Steps */
+    .steps-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 0.85rem;
+      align-items: flex-start;
+    }
+
+    .step-badge {
+      background: var(--accent-gradient);
+      color: #fff;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 0.8rem;
+      box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
+    }
+
+    .step-content h5 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .step-content p {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+      line-height: 1.3;
+    }
+
+    /* Smartphone Mockup */
+    .mockup-container {
+      display: flex;
+      justify-content: center;
+    }
+
+    .phone-mockup {
+      width: 105px;
+      height: 185px;
+      background: #000;
+      border: 3px solid #222;
+      border-radius: 18px;
+      padding: 6px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.6), var(--shadow-glow);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    /* Notch */
+    .phone-mockup::before {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 35px;
+      height: 7px;
+      background: #222;
+      border-radius: 4px;
+      z-index: 10;
+    }
+
+    .phone-screen {
+      background: #0d0e14;
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
+      padding: 8px 4px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    .phone-header {
+      font-size: 0.5rem;
+      font-weight: bold;
+      color: var(--accent);
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    .phone-event-card {
+      background: rgba(139, 92, 246, 0.12);
+      border-left: 2px solid var(--accent);
+      border-radius: 4px;
+      padding: 5px;
+      margin: 8px 0;
+    }
+
+    .phone-event-title {
+      font-size: 0.55rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .phone-event-time {
+      font-size: 0.45rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .phone-calendar-sync {
+      border: 1px dashed rgba(255,255,255,0.1);
+      border-radius: 4px;
+      padding: 4px;
+      text-align: center;
+    }
+
+    .phone-calendar-sync p {
+      font-size: 0.42rem;
+      color: var(--text-muted);
+    }
+
+    .phone-qr-placeholder {
+      width: 25px;
+      height: 25px;
+      background: #fff;
+      margin: 4px auto;
+      padding: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .phone-qr-placeholder div {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      mask-image: radial-gradient(circle, transparent 20%, black 21%); /* mock style */
+    }
+
+    /* ── PRO TIPP CALLOUT ── */
+    .pro-tipp {
+      background: rgba(59, 130, 246, 0.05);
+      border: 1px dashed rgba(59, 130, 246, 0.2);
+      padding: 0.8rem 1rem;
+      border-radius: var(--radius-md);
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      position: relative;
+      z-index: 10;
+      margin-bottom: 1.2rem;
+    }
+
+    .pro-icon {
+      font-size: 1.3rem;
+      flex-shrink: 0;
+    }
+
+    .pro-text h6 {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #3b82f6;
+    }
+
+    .pro-text p {
+      font-size: 0.68rem;
+      color: var(--text-secondary);
+      margin-top: 1px;
+    }
+
+    /* ── FOOTER ── */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding-top: 0.85rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    .footer-text {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+
+    .footer-text strong {
+      color: var(--text);
+    }
+
+    .footer-url {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent);
+      background: rgba(139, 92, 246, 0.08);
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      border: 1px solid rgba(139, 92, 246, 0.15);
+    }
+
+    /* ── PRINT STYLES ── */
+    @media print {
+      body {
+        background: none;
+        padding: 0;
+      }
+      .flyer {
+        width: 148mm;
+        height: 210mm;
+        border-radius: 0;
+        box-shadow: none;
+        border: none;
+        background: #fff !important;
+        color: #000 !important;
+      }
+      .logo span, .intro-title span, .badge-mobile, .step-badge, .footer-url {
+        -webkit-text-fill-color: initial !important;
+        color: #8b5cf6 !important;
+        background: none !important;
+      }
+      .badge-mobile, .footer-url {
+        border: 1px solid #8b5cf6 !important;
+      }
+      .feature-card, .steps-section, .steps-container, .phone-mockup, .pro-tipp {
+        background: #fff !important;
+        border: 1px solid #ddd !important;
+        box-shadow: none !important;
+        color: #000 !important;
+      }
+      .phone-screen {
+        background: #f9f9f9 !important;
+      }
+      .phone-event-card {
+        background: #eee !important;
+        border-left: 2px solid #8b5cf6 !important;
+      }
+      .step-badge {
+        background: #8b5cf6 !important;
+        color: #fff !important;
+      }
+      .feature-text p, .step-content p, .footer-text, .pro-text p {
+        color: #444 !important;
+      }
+      .feature-text h4, .step-content h5, .pro-text h6, .phone-event-title {
+        color: #000 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="flyer">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <div class="logo-icon">S</div>
+        Simple<span>Staff</span>
+      </div>
+      <div class="badge-mobile">Dienstplan App</div>
+    </div>
+
+    <!-- Title -->
+    <h2 class="intro-title">Dein Schichtplan,<br>immer <span>mobil dabei!</span></h2>
+
+    <!-- Grid of Features -->
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-emoji">📋</div>
+        <div class="feature-text">
+          <h4>Schichtübersicht</h4>
+          <p>Dienste live am Handy einsehen.</p>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-emoji">🌴</div>
+        <div class="feature-text">
+          <h4>Urlaubsanträge</h4>
+          <p>Frei beantragen & Saldo checken.</p>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-emoji">🔀</div>
+        <div class="feature-text">
+          <h4>Schichttausch</h4>
+          <p>Dienste unkompliziert tauschen.</p>
+        </div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-emoji">📅</div>
+        <div class="feature-text">
+          <h4>Kalender-Abo</h4>
+          <p>Automatisch mit Handy synchron.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workflow & Mockup split -->
+    <div class="content-split">
+      <div class="steps-container">
+        <div class="step-item">
+          <div class="step-badge">1</div>
+          <div class="step-content">
+            <h5>Login anfordern</h5>
+            <p>Lass dir von deinem Planer in den Stammdaten dein Benutzerkonto freischalten.</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-badge">2</div>
+          <div class="step-content">
+            <h5>Einloggen</h5>
+            <p>Melde dich mit deiner E-Mail und Passwort auf der Website an.</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-badge">3</div>
+          <div class="step-content">
+            <h5>QR-Code scannen</h5>
+            <p>Gehe auf Kalender und scanne den Code. Fertig ist das automatische Abo!</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone mockup -->
+      <div class="mockup-container">
+        <div class="phone-mockup">
+          <div class="phone-screen">
+            <div class="phone-header">SimpleStaff</div>
+            <div>
+              <div class="phone-event-card">
+                <div class="phone-event-title">Frühdienst</div>
+                <div class="phone-event-time">Heute, 08:00 - 16:00</div>
+              </div>
+              <div class="phone-event-card" style="background: rgba(16,185,129,0.1); border-left-color: var(--success);">
+                <div class="phone-event-title" style="color: var(--success);">Urlaub genehmigt</div>
+                <div class="phone-event-time">Nächste Woche (5 Tage)</div>
+              </div>
+            </div>
+            <div class="phone-calendar-sync">
+              <p>Kalender-Sync</p>
+              <div class="phone-qr-placeholder">
+                <div style="background-image: repeating-linear-gradient(45deg, #000 0px, #000 2px, #fff 2px, #fff 4px);"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pro Tipp -->
+    <div class="pro-tipp">
+      <div class="pro-icon">💡</div>
+      <div class="pro-text">
+        <h6>Tauschbörse nutzen</h6>
+        <p>Du kannst eine Schicht nicht wahrnehmen? Gib sie einfach in der Tauschbörse frei und lass dich von Kollegen vertreten.</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div class="footer-text">
+        Frag deinen Planer bei Fragen.<br>
+        Powered by <strong>SimpleStaff</strong>.
+      </div>
+      <div class="footer-url">time.bls-isp.net</div>
+    </div>
+  </div>
+</body>
+</html>

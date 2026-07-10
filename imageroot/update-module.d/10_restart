@@ -1,0 +1,11 @@
+#!/bin/bash
+# ============================================
+# SimpleStaff - Nethserver 8 update hook
+# ============================================
+
+set -e
+
+# Restart simplestaff service on module update to reload latest container images
+systemctl --user restart simplestaff.service
+
+echo "SimpleStaff service restarted after update."
