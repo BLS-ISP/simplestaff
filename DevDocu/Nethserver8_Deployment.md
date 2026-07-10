@@ -40,12 +40,14 @@ Da es sich um ein **privates Repository** handelt, müssen Sie dem Nethserver-Ho
      # Password: <Dein GitHub Personal Access Token (PAT)>
      ```
 
-3. **Berechtigungen vergeben:**
+3. **Berechtigungen vergeben (WICHTIG):**
    * Damit der spätere rootless Anwendungsbenutzer die Anmeldeinformationen lesen und die Images herunterladen kann, müssen Sie Leserechte vergeben:
      ```bash
      chmod -c a+rx /etc/nethserver
      chmod -c a+r /etc/nethserver/registry.json
      ```
+   * > [!WARNING]
+     > **WICHTIGER HINWEIS:** Jedes Mal, wenn Sie `podman login` ausführen, setzt Podman die Dateiberechtigungen von `/etc/nethserver/registry.json` aus Sicherheitsgründen automatisch wieder auf `600` (nur für root lesbar) zurück. Sie **müssen** die `chmod`-Befehle nach jedem Login/Änderung zwingend erneut ausführen!
 
 4. **Vorkonfiguration:**
    * Die Image-Pfade in `/home/simplestaff1/.config/systemd/user/simplestaff.service` sind bereits fest auf Ihre Organisation `bls-isp` vorkonfiguriert. Es ist keine manuelle Pfad-Anpassung nötig.
