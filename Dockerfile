@@ -1,8 +1,8 @@
 # ============================================
-# Nethserver 8 - Module Installer Scratch Image
+# Nethserver 8 - Module Installer Alpine Image
 # ============================================
 
-FROM scratch
+FROM alpine:latest
 COPY imageroot /
 
 # Nethserver 8 Module metadata labels
