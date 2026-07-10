@@ -87,6 +87,7 @@ pub async fn list_vacations(
     let vacations = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
             Vacation::find()
+                .filter(Column::TenantId.eq(auth.tenant_id))
                 .filter(Column::EmployeeId.eq(employee_id))
                 .order_by_desc(Column::StartDate)
                 .all(txn)
@@ -148,7 +149,9 @@ pub async fn approve_vacation(
 
     let vacation = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
-            let vacation = Vacation::find_by_id(vacation_id)
+            let vacation = Vacation::find()
+                .filter(Column::Id.eq(vacation_id))
+                .filter(Column::TenantId.eq(auth.tenant_id))
                 .filter(Column::EmployeeId.eq(employee_id))
                 .one(txn)
                 .await?
@@ -176,7 +179,9 @@ pub async fn reject_vacation(
 
     let vacation = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
-            let vacation = Vacation::find_by_id(vacation_id)
+            let vacation = Vacation::find()
+                .filter(Column::Id.eq(vacation_id))
+                .filter(Column::TenantId.eq(auth.tenant_id))
                 .filter(Column::EmployeeId.eq(employee_id))
                 .one(txn)
                 .await?
@@ -218,10 +223,12 @@ pub async fn list_tenant_vacations(
     let (vacations, employees) = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
             let vacs = Vacation::find()
+                .filter(Column::TenantId.eq(auth.tenant_id))
                 .order_by_desc(Column::StartDate)
                 .all(txn)
                 .await?;
             let emps = employee::Entity::find()
+                .filter(employee::Column::TenantId.eq(auth.tenant_id))
                 .all(txn)
                 .await?;
             Ok((vacs, emps))

@@ -108,13 +108,16 @@ async fn list_employees(
     auth: AuthUser,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<PaginatedResponse<serde_json::Value>>, AppError> {
+    let tenant_id = auth.tenant_id;
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(50).max(1);
     let is_active_filter = query.is_active;
 
     let result = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
-            let mut query = Employee::find().order_by_asc(Column::LastName);
+            let mut query = Employee::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .order_by_asc(Column::LastName);
 
             if let Some(active) = is_active_filter {
                 query = query.filter(Column::IsActive.eq(active));
@@ -150,9 +153,12 @@ async fn get_employee(
     auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let tenant_id = auth.tenant_id;
     let model = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
-            Employee::find_by_id(id)
+            Employee::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))
@@ -191,6 +197,7 @@ async fn create_employee(
         let count = execute_with_tenant(&state.db, &tenant_id, |txn| {
             Box::pin(async move {
                 Employee::find()
+                    .filter(Column::TenantId.eq(tenant_id))
                     .filter(Column::IsActive.eq(true))
                     .count(txn)
                     .await
@@ -266,6 +273,7 @@ async fn update_employee(
             let count = execute_with_tenant(&state.db, &tenant_id, |txn| {
                 Box::pin(async move {
                     Employee::find()
+                        .filter(Column::TenantId.eq(tenant_id))
                         .filter(Column::IsActive.eq(true))
                         .count(txn)
                         .await
@@ -276,7 +284,9 @@ async fn update_employee(
 
             let is_currently_active = execute_with_tenant(&state.db, &tenant_id, |txn| {
                 Box::pin(async move {
-                    let emp = Employee::find_by_id(id)
+                    let emp = Employee::find()
+                        .filter(Column::Id.eq(id))
+                        .filter(Column::TenantId.eq(tenant_id))
                         .one(txn)
                         .await?
                         .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))?;
@@ -296,7 +306,9 @@ async fn update_employee(
 
     let model = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
-            let existing = Employee::find_by_id(id)
+            let existing = Employee::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))?;
@@ -358,10 +370,13 @@ async fn delete_employee(
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_manager(&auth)?;
+    let tenant_id = auth.tenant_id;
 
     execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
-            let delete_res = Employee::delete_by_id(id)
+            let delete_res = Employee::delete_many()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
                 .exec(txn)
                 .await?;
             if delete_res.rows_affected == 0 {
@@ -382,12 +397,15 @@ async fn get_current_employee(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let emp = execute_with_tenant(&state.db, &auth_user.tenant_id, |txn| {
         Box::pin(async move {
-            let user_model = user::Entity::find_by_id(auth_user.user_id)
+            let user_model = user::Entity::find()
+                .filter(user::Column::Id.eq(auth_user.user_id))
+                .filter(user::Column::TenantId.eq(auth_user.tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
             let emp_model = Employee::find()
+                .filter(Column::TenantId.eq(auth_user.tenant_id))
                 .filter(Column::Email.eq(user_model.email))
                 .one(txn)
                 .await?
@@ -440,7 +458,9 @@ async fn create_employee_user(
 
     let new_user_model = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let emp = Employee::find_by_id(id)
+            let emp = Employee::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))?;
@@ -452,6 +472,7 @@ async fn create_employee_user(
 
             // Check if user account already exists
             let existing = user::Entity::find()
+                .filter(user::Column::TenantId.eq(tenant_id))
                 .filter(user::Column::Email.eq(&emp_email))
                 .one(txn)
                 .await?;

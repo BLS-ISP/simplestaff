@@ -45,10 +45,10 @@ pub async fn list_shift_swaps(
 
     let (swaps, employees, assignments, shift_types) = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let s = shift_swap::Entity::find().all(txn).await?;
-            let emps = employee::Entity::find().all(txn).await?;
-            let assigns = shift_assignment::Entity::find().all(txn).await?;
-            let sts = shift_type::Entity::find().all(txn).await?;
+            let s = shift_swap::Entity::find().filter(shift_swap::Column::TenantId.eq(tenant_id)).all(txn).await?;
+            let emps = employee::Entity::find().filter(employee::Column::TenantId.eq(tenant_id)).all(txn).await?;
+            let assigns = shift_assignment::Entity::find().filter(shift_assignment::Column::TenantId.eq(tenant_id)).all(txn).await?;
+            let sts = shift_type::Entity::find().filter(shift_type::Column::TenantId.eq(tenant_id)).all(txn).await?;
             Ok((s, emps, assigns, sts))
         })
     })
@@ -145,17 +145,22 @@ pub async fn create_shift_swap(
         let role = auth.role.clone();
         let assignment_id = payload.assignment_id;
         Box::pin(async move {
-            let user_record = user::Entity::find_by_id(user_id)
+            let user_record = user::Entity::find()
+                .filter(user::Column::Id.eq(user_id))
+                .filter(user::Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
             let emp = employee::Entity::find()
+                .filter(employee::Column::TenantId.eq(tenant_id))
                 .filter(employee::Column::Email.eq(user_record.email))
                 .one(txn)
                 .await?;
 
-            let assignment = shift_assignment::Entity::find_by_id(assignment_id)
+            let assignment = shift_assignment::Entity::find()
+                .filter(shift_assignment::Column::Id.eq(assignment_id))
+                .filter(shift_assignment::Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Assignment not found".to_string()))?;
@@ -179,6 +184,7 @@ pub async fn create_shift_swap(
         let notes = payload.notes.clone();
         Box::pin(async move {
             let existing = shift_swap::Entity::find()
+                .filter(shift_swap::Column::TenantId.eq(tenant_id))
                 .filter(shift_swap::Column::AssignmentId.eq(assignment_id))
                 .filter(shift_swap::Column::Status.ne("approved"))
                 .filter(shift_swap::Column::Status.ne("cancelled"))
@@ -221,12 +227,15 @@ pub async fn claim_shift_swap(
     let claiming_employee_id = execute_with_tenant(&state.db, &tenant_id, |txn| {
         let user_id = auth.user_id;
         Box::pin(async move {
-            let user_record = user::Entity::find_by_id(user_id)
+            let user_record = user::Entity::find()
+                .filter(user::Column::Id.eq(user_id))
+                .filter(user::Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
             let emp = employee::Entity::find()
+                .filter(employee::Column::TenantId.eq(tenant_id))
                 .filter(employee::Column::Email.eq(user_record.email))
                 .one(txn)
                 .await?
@@ -238,7 +247,9 @@ pub async fn claim_shift_swap(
 
     let updated = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let swap = shift_swap::Entity::find_by_id(swap_id)
+            let swap = shift_swap::Entity::find()
+                .filter(shift_swap::Column::Id.eq(swap_id))
+                .filter(shift_swap::Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Tauschantrag nicht gefunden".to_string()))?;
@@ -286,7 +297,9 @@ pub async fn approve_shift_swap(
 
     let updated_assignment = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let swap = shift_swap::Entity::find_by_id(swap_id)
+            let swap = shift_swap::Entity::find()
+                .filter(shift_swap::Column::Id.eq(swap_id))
+                .filter(shift_swap::Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Tauschantrag nicht gefunden".to_string()))?;
@@ -298,7 +311,9 @@ pub async fn approve_shift_swap(
             let backup_employee_id = swap.backup_employee_id
                 .ok_or_else(|| AppError::BadRequest("Kein Übernahme-Kandidat vorhanden.".to_string()))?;
 
-            let assignment = shift_assignment::Entity::find_by_id(swap.assignment_id)
+            let assignment = shift_assignment::Entity::find()
+                .filter(shift_assignment::Column::Id.eq(swap.assignment_id))
+                .filter(shift_assignment::Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Zugehörige Schichtzuweisung nicht gefunden.".to_string()))?;
@@ -364,7 +379,9 @@ pub async fn reject_shift_swap(
 
     let updated = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let swap = shift_swap::Entity::find_by_id(swap_id)
+            let swap = shift_swap::Entity::find()
+                .filter(shift_swap::Column::Id.eq(swap_id))
+                .filter(shift_swap::Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Tauschantrag nicht gefunden".to_string()))?;
@@ -409,12 +426,15 @@ pub async fn delete_shift_swap(
             }
 
             if role == "viewer" {
-                let user_record = user::Entity::find_by_id(user_id)
+                let user_record = user::Entity::find()
+                    .filter(user::Column::Id.eq(user_id))
+                    .filter(user::Column::TenantId.eq(tenant_id))
                     .one(txn)
                     .await?
                     .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
                 let emp = employee::Entity::find()
+                    .filter(employee::Column::TenantId.eq(tenant_id))
                     .filter(employee::Column::Email.eq(user_record.email))
                     .one(txn)
                     .await?
@@ -425,7 +445,11 @@ pub async fn delete_shift_swap(
                 }
             }
 
-            shift_swap::Entity::delete_by_id(swap_id).exec(txn).await?;
+            shift_swap::Entity::delete_many()
+                .filter(shift_swap::Column::Id.eq(swap_id))
+                .filter(shift_swap::Column::TenantId.eq(tenant_id))
+                .exec(txn)
+                .await?;
             Ok(())
         })
     })

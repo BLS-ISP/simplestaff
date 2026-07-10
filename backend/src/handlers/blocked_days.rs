@@ -62,6 +62,7 @@ pub async fn list_blocked_days(
     let blocked_days = execute_with_tenant(&state.db, &auth_user.tenant_id, |txn| {
         Box::pin(async move {
             BlockedDay::find()
+                .filter(Column::TenantId.eq(auth_user.tenant_id))
                 .filter(Column::EmployeeId.eq(employee_id))
                 .order_by_asc(Column::BlockedDate)
                 .all(txn)
@@ -111,7 +112,9 @@ pub async fn delete_blocked_day(
 ) -> Result<Json<serde_json::Value>, AppError> {
     execute_with_tenant(&state.db, &auth_user.tenant_id, |txn| {
         Box::pin(async move {
-            let blocked_day = BlockedDay::find_by_id(id)
+            let blocked_day = BlockedDay::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(auth_user.tenant_id))
                 .filter(Column::EmployeeId.eq(employee_id))
                 .one(txn)
                 .await?

@@ -49,7 +49,9 @@ pub async fn list_closed_days(
 
     let closed_days = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let mut q = ClosedDay::find().order_by_asc(Column::ClosedDate);
+            let mut q = ClosedDay::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .order_by_asc(Column::ClosedDate);
 
             if let Some(start) = query.start_date {
                 q = q.filter(Column::ClosedDate.gte(start));
@@ -80,6 +82,7 @@ pub async fn create_closed_day(
         Box::pin(async move {
             // Check if closed day already exists for this date
             let existing = ClosedDay::find()
+                .filter(Column::TenantId.eq(tenant_id))
                 .filter(Column::ClosedDate.eq(input.closed_date))
                 .one(txn)
                 .await?;
@@ -117,7 +120,11 @@ pub async fn delete_closed_day(
 
     execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let delete_res = ClosedDay::delete_by_id(id).exec(txn).await?;
+            let delete_res = ClosedDay::delete_many()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
+                .exec(txn)
+                .await?;
             if delete_res.rows_affected == 0 {
                 return Err(AppError::NotFound(format!("Closed day {id} not found")));
             }

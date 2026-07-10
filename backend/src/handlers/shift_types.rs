@@ -118,6 +118,7 @@ pub async fn list_shift_types(
     let shift_types = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
             ShiftType::find()
+                .filter(Column::TenantId.eq(tenant_id))
                 .filter(Column::IsActive.eq(true))
                 .all(txn)
                 .await
@@ -181,7 +182,9 @@ pub async fn update_shift_type(
 
     let shift_type = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let existing = ShiftType::find_by_id(id)
+            let existing = ShiftType::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Shift type not found".to_string()))?;
@@ -241,7 +244,9 @@ pub async fn delete_shift_type(
 
     execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let existing = ShiftType::find_by_id(id)
+            let existing = ShiftType::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Shift type not found".to_string()))?;

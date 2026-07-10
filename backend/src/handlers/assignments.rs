@@ -74,9 +74,11 @@ async fn fetch_assignments_in_range(
     start: NaiveDate,
     end: NaiveDate,
 ) -> Result<Vec<shift_assignment::Model>, AppError> {
-    execute_with_tenant(&state.db, tenant_id, |txn| {
+    let tenant_id_val = *tenant_id;
+    execute_with_tenant(&state.db, &tenant_id_val, |txn| {
         Box::pin(async move {
             ShiftAssignment::find()
+                .filter(Column::TenantId.eq(tenant_id_val))
                 .filter(Column::AssignmentDate.gte(start))
                 .filter(Column::AssignmentDate.lte(end))
                 .order_by_asc(Column::AssignmentDate)
@@ -198,7 +200,9 @@ pub async fn update_assignment(
 
     let model = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let existing = ShiftAssignment::find_by_id(id)
+            let existing = ShiftAssignment::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("Assignment {id} not found")))?;
@@ -250,7 +254,9 @@ pub async fn delete_assignment(
 
     execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let result = ShiftAssignment::delete_by_id(id)
+            let result = ShiftAssignment::delete_many()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
                 .exec(txn)
                 .await?;
 
