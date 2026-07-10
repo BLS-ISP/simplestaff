@@ -5,4 +5,5 @@ imageroot/actions/get-configuration/20read text eol=lf
 imageroot/actions/destroy-module/20destroy text eol=lf
 imageroot/actions/create-module/20initialize text eol=lf
 imageroot/update-module.d/10_restart text eol=lf
+imageroot/actions/get-status/20read text eol=lf
 *.sh text eol=lf

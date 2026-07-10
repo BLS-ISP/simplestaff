@@ -8,11 +8,32 @@
 import os
 import json
 import sys
+import traceback
 
-config = {
-    "domain_name": os.environ.get('DOMAIN_NAME', ''),
-    "super_admin_email": os.environ.get('SUPER_ADMIN_EMAIL', ''),
-    "super_admin_password": os.environ.get('SUPER_ADMIN_PASSWORD', ''),
-}
+def log_error(msg):
+    print(f"ERROR: {msg}", file=sys.stderr)
 
-json.dump(config, fp=sys.stdout)
+try:
+    # Import agent to initialize NS8 environment
+    import agent
+except Exception as e:
+    log_error(f"Failed to import NS8 agent: {e}")
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)
+
+try:
+    # Read environment variables loaded by runagent from state/environment
+    config = {
+        "domain_name": os.environ.get('DOMAIN_NAME', ''),
+        "super_admin_email": os.environ.get('SUPER_ADMIN_EMAIL', ''),
+        "super_admin_password": os.environ.get('SUPER_ADMIN_PASSWORD', ''),
+    }
+
+    # Print to stdout (which is captured by NS8 task runner as output)
+    json.dump(config, fp=sys.stdout)
+    sys.stdout.flush()
+
+except Exception as e:
+    log_error(f"Unexpected error during get-configuration: {e}")
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)

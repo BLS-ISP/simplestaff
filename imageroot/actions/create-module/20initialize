@@ -6,12 +6,33 @@
 #
 
 import os
+import sys
 import agent
+import traceback
 
-# Ensure the state directories exist
-os.makedirs(os.path.expanduser('~/.config/state/postgres_data'), exist_ok=True)
+def log_error(msg):
+    print(f"ERROR: {msg}", file=sys.stderr)
 
-# Set the container image references for use in the systemd service
-agent.set_env('POSTGRES_IMAGE', os.environ.get('POSTGRES_IMAGE', 'docker.io/library/postgres:15-alpine'))
-agent.set_env('SIMPLESTAFF_BACKEND_IMAGE', os.environ.get('SIMPLESTAFF_BACKEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-backend:latest'))
-agent.set_env('SIMPLESTAFF_FRONTEND_IMAGE', os.environ.get('SIMPLESTAFF_FRONTEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-frontend:latest'))
+try:
+    print("Initializing SimpleStaff module...", file=sys.stderr)
+    
+    # Ensure the state directories exist
+    os.makedirs(os.path.expanduser('~/.config/state/postgres_data'), exist_ok=True)
+
+    # Set the container image references for use in the systemd service
+    postgres_img = os.environ.get('POSTGRES_IMAGE', 'docker.io/library/postgres:15-alpine')
+    backend_img = os.environ.get('SIMPLESTAFF_BACKEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-backend:latest')
+    frontend_img = os.environ.get('SIMPLESTAFF_FRONTEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-frontend:latest')
+
+    print(f"Setting default images: postgres={postgres_img}, backend={backend_img}, frontend={frontend_img}", file=sys.stderr)
+
+    agent.set_env('POSTGRES_IMAGE', postgres_img)
+    agent.set_env('SIMPLESTAFF_BACKEND_IMAGE', backend_img)
+    agent.set_env('SIMPLESTAFF_FRONTEND_IMAGE', frontend_img)
+
+    print("Module initialization completed successfully.", file=sys.stderr)
+
+except Exception as e:
+    log_error(f"Unexpected error during create-module: {e}")
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)
