@@ -3,6 +3,8 @@ import VueRouter from "vue-router";
 import Status from "../views/Status.vue";
 import Settings from "../views/Settings.vue";
 
+import About from "../views/About.vue";
+
 Vue.use(VueRouter);
 
 const routes = [
@@ -23,8 +25,7 @@ const routes = [
   {
     path: "/about",
     name: "About",
-    component: () =>
-      import(/* webpackChunkName: "about" */ "../views/About.vue"),
+    component: About,
   },
 ];
 

@@ -44,22 +44,26 @@ window.addEventListener("unhandledrejection", function (event) {
 
 // i18n
 import VueI18n from "vue-i18n";
-import { loadLanguage } from "./i18n";
+import deMessages from "../public/i18n/de/translation.json";
+import enMessages from "../public/i18n/en/translation.json";
 
-loadI18n();
+Vue.use(VueI18n);
 
-async function loadI18n() {
-  const navigatorLang = navigator.language.substring(0, 2);
-  const messages = await loadLanguage(navigatorLang);
-  Vue.use(VueI18n);
-  const i18n = new VueI18n();
-  i18n.setLocaleMessage(navigatorLang, messages.default);
-  i18n.locale = navigatorLang;
+const navigatorLang = navigator.language.substring(0, 2);
+const activeLang = ["de", "en"].includes(navigatorLang) ? navigatorLang : "en";
+const messages = activeLang === "de" ? deMessages : enMessages;
 
-  new Vue({
-    router,
-    store,
-    i18n,
-    render: (h) => h(App),
-  }).$mount("#ns8-app");
-}
+const i18n = new VueI18n({
+  locale: activeLang,
+  fallbackLocale: "en",
+  messages: {
+    [activeLang]: messages,
+  },
+});
+
+new Vue({
+  router,
+  store,
+  i18n,
+  render: (h) => h(App),
+}).$mount("#ns8-app");
