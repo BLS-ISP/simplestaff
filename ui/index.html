@@ -7,186 +7,46 @@
   <style>
     :root {
       --cds-interactive-01: #0f62fe;
-      --cds-interactive-02: #393939;
       --cds-text-01: #161616;
       --cds-text-02: #525252;
-      --cds-ui-01: #f4f4f4;
       --cds-ui-02: #ffffff;
       --cds-field-01: #f4f4f4;
       --cds-support-02: #198038;
       --cds-support-01: #da1e28;
       --cds-border-subtle: #e0e0e0;
     }
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
       font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 14px;
-      line-height: 1.5;
-      color: var(--cds-text-01);
-      background: var(--cds-ui-02);
-      padding: 2rem;
+      font-size: 14px; line-height: 1.5; color: var(--cds-text-01);
+      background: var(--cds-ui-02); padding: 2rem;
     }
-
-    .page-header {
-      margin-bottom: 2rem;
-      padding-bottom: 1rem;
-      border-bottom: 1px solid var(--cds-border-subtle);
-    }
-
-    .page-header h1 {
-      font-size: 1.75rem;
-      font-weight: 400;
-      margin-bottom: 0.25rem;
-    }
-
-    .page-header p {
-      color: var(--cds-text-02);
-      font-size: 0.875rem;
-    }
-
-    .card {
-      background: var(--cds-ui-02);
-      border: 1px solid var(--cds-border-subtle);
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .card h2 {
-      font-size: 1.125rem;
-      font-weight: 600;
-      margin-bottom: 1.5rem;
-    }
-
-    .form-group {
-      margin-bottom: 1.25rem;
-    }
-
-    .form-group label {
-      display: block;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: var(--cds-text-02);
-      margin-bottom: 0.5rem;
-      text-transform: uppercase;
-      letter-spacing: 0.32px;
-    }
-
-    .form-group input {
-      width: 100%;
-      max-width: 480px;
-      height: 2.5rem;
-      padding: 0 1rem;
-      font-size: 0.875rem;
-      font-family: inherit;
-      color: var(--cds-text-01);
-      background: var(--cds-field-01);
-      border: none;
-      border-bottom: 1px solid var(--cds-border-subtle);
-      outline: none;
-      transition: border-color 0.15s;
-    }
-
-    .form-group input:focus {
-      border-bottom: 2px solid var(--cds-interactive-01);
-    }
-
-    .form-group .helper-text {
-      font-size: 0.75rem;
-      color: var(--cds-text-02);
-      margin-top: 0.25rem;
-    }
-
-    .btn-primary {
-      display: inline-flex;
-      align-items: center;
-      height: 3rem;
-      padding: 0 4rem 0 1rem;
-      font-size: 0.875rem;
-      font-family: inherit;
-      font-weight: 400;
-      color: #fff;
-      background: var(--cds-interactive-01);
-      border: none;
-      cursor: pointer;
-      transition: background 0.15s;
-      position: relative;
-    }
-
+    .page-header { margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--cds-border-subtle); }
+    .page-header h1 { font-size: 1.75rem; font-weight: 400; margin-bottom: 0.25rem; }
+    .page-header p { color: var(--cds-text-02); font-size: 0.875rem; }
+    .card { background: var(--cds-ui-02); border: 1px solid var(--cds-border-subtle); padding: 1.5rem; margin-bottom: 1.5rem; }
+    .card h2 { font-size: 1.125rem; font-weight: 600; margin-bottom: 1.5rem; }
+    .form-group { margin-bottom: 1.25rem; }
+    .form-group label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--cds-text-02); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.32px; }
+    .form-group input { width: 100%; max-width: 480px; height: 2.5rem; padding: 0 1rem; font-size: 0.875rem; font-family: inherit; color: var(--cds-text-01); background: var(--cds-field-01); border: none; border-bottom: 1px solid var(--cds-border-subtle); outline: none; }
+    .form-group input:focus { border-bottom: 2px solid var(--cds-interactive-01); }
+    .form-group .helper-text { font-size: 0.75rem; color: var(--cds-text-02); margin-top: 0.25rem; }
+    .btn-primary { display: inline-flex; align-items: center; height: 3rem; padding: 0 1.5rem; font-size: 0.875rem; font-family: inherit; color: #fff; background: var(--cds-interactive-01); border: none; cursor: pointer; gap: 0.5rem; }
     .btn-primary:hover { background: #0353e9; }
-    .btn-primary:active { background: #002d9c; }
-    .btn-primary:disabled {
-      background: #c6c6c6;
-      color: #8d8d8d;
-      cursor: not-allowed;
-    }
-
-    .btn-primary svg {
-      position: absolute;
-      right: 1rem;
-      width: 16px;
-      height: 16px;
-      fill: currentColor;
-    }
-
-    .notification {
-      display: none;
-      padding: 1rem;
-      margin-bottom: 1.5rem;
-      font-size: 0.875rem;
-      border-left: 3px solid;
-    }
-
-    .notification.success {
-      display: block;
-      background: #defbe6;
-      border-color: var(--cds-support-02);
-      color: #044317;
-    }
-
-    .notification.error {
-      display: block;
-      background: #fff1f1;
-      border-color: var(--cds-support-01);
-      color: #750e13;
-    }
-
-    .notification.loading {
-      display: block;
-      background: #edf5ff;
-      border-color: var(--cds-interactive-01);
-      color: #002d9c;
-    }
-
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.25rem 0.75rem;
-      font-size: 0.75rem;
-      font-weight: 600;
-      border-radius: 100px;
-    }
-
-    .status-badge.configured {
-      background: #defbe6;
-      color: #044317;
-    }
-
-    .status-badge.unconfigured {
-      background: #fff8e1;
-      color: #684e00;
-    }
-
-    .status-badge .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-    }
-
+    .btn-primary:disabled { background: #c6c6c6; color: #8d8d8d; cursor: not-allowed; }
+    .notification { display: none; padding: 1rem; margin-bottom: 1.5rem; font-size: 0.875rem; border-left: 3px solid; }
+    .notification.success { display: block; background: #defbe6; border-color: var(--cds-support-02); color: #044317; }
+    .notification.error { display: block; background: #fff1f1; border-color: var(--cds-support-01); color: #750e13; }
+    .notification.loading { display: block; background: #edf5ff; border-color: var(--cds-interactive-01); color: #002d9c; }
+    .status-badge { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.75rem; font-size: 0.75rem; font-weight: 600; border-radius: 100px; }
+    .status-badge.configured { background: #defbe6; color: #044317; }
+    .status-badge.unconfigured { background: #fff8e1; color: #684e00; }
+    .status-badge .dot { width: 8px; height: 8px; border-radius: 50%; }
     .status-badge.configured .dot { background: var(--cds-support-02); }
     .status-badge.unconfigured .dot { background: #f1c21b; }
+    .link-row { margin-top: 1rem; }
+    .link-row a { color: var(--cds-interactive-01); text-decoration: none; font-size: 0.875rem; }
+    .link-row a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -205,6 +65,9 @@
         <span id="statusText">Nicht konfiguriert</span>
       </span>
     </h2>
+    <div class="link-row" id="appLink" style="display:none">
+      <a id="appUrl" href="#" target="_blank">&#x2192; SimpleStaff öffnen</a>
+    </div>
   </div>
 
   <div class="card">
@@ -213,149 +76,156 @@
       <div class="form-group">
         <label for="domain_name">Domain Name</label>
         <input type="text" id="domain_name" placeholder="z.B. time.bls-isp.net" required>
-        <div class="helper-text">Die FQDN unter der SimpleStaff erreichbar sein soll (HTTPS mit Let's Encrypt)</div>
+        <div class="helper-text">FQDN unter der SimpleStaff erreichbar ist (HTTPS mit Let's Encrypt)</div>
       </div>
-
       <div class="form-group">
         <label for="super_admin_email">Super Admin E-Mail</label>
         <input type="email" id="super_admin_email" placeholder="z.B. admin@firma.de" required>
-        <div class="helper-text">E-Mail-Adresse für den Super-Administrator-Account</div>
+        <div class="helper-text">E-Mail-Adresse für den Super-Administrator</div>
       </div>
-
       <div class="form-group">
         <label for="super_admin_password">Super Admin Passwort</label>
         <input type="password" id="super_admin_password" placeholder="Mindestens 6 Zeichen" required minlength="6">
-        <div class="helper-text">Passwort für den Super-Administrator-Account</div>
+        <div class="helper-text">Passwort für den Super-Administrator</div>
       </div>
-
-      <button type="submit" class="btn-primary" id="saveBtn">
-        Konfiguration speichern
-        <svg viewBox="0 0 32 32"><path d="M28 6H4a2 2 0 00-2 2v16a2 2 0 002 2h24a2 2 0 002-2V8a2 2 0 00-2-2zM4 24V8h24v16z"/><path d="M16 10l-6 6h4v6h4v-6h4l-6-6z"/></svg>
-      </button>
+      <button type="submit" class="btn-primary" id="saveBtn">Konfiguration speichern</button>
     </form>
   </div>
 
   <script>
     // ========================================
-    // NS8 Module UI - API Integration
+    // NS8 Module UI - Core Integration
     // ========================================
 
-    // Determine the module instance ID from the URL path
+    // Get the module instance ID from the URL path
     // NS8 loads module UI at: /cluster-admin/apps/{module_id}/
     const pathSegments = window.location.pathname.replace(/\/+$/, '').split('/');
     const moduleId = pathSegments[pathSegments.length - 1];
 
-    // NS8 API base URL (same origin)
-    const API_BASE = '/cluster-admin/api/';
+    // Access the NS8 core via the parent iframe bridge
+    let coreRoot = null;
+    let apiUrl = '';
+    let authToken = '';
 
-    // Get authentication token from the parent NS8 core frame
-    function getAuthHeaders() {
-      let token = '';
-      try {
-        // NS8 core stores the JWT in localStorage
-        token = window.parent.localStorage.getItem('loginToken') || '';
-      } catch (e) {
-        try {
-          token = localStorage.getItem('loginToken') || '';
-        } catch (e2) {
-          console.warn('Cannot access auth token:', e2);
-        }
+    try {
+      // The NS8 core exposes itself as window.parent.ns8Core
+      const ns8Core = window.parent.ns8Core;
+      if (ns8Core && ns8Core.$root) {
+        coreRoot = ns8Core.$root;
+        // The core provides the API URL and JWT token
+        apiUrl = coreRoot.apiUrl || coreRoot.$data.apiUrl || '';
+        authToken = coreRoot.token || coreRoot.$data.token || '';
       }
-      return {
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/json',
-      };
+    } catch (e) {
+      console.warn('Cannot access NS8 core:', e);
     }
 
-    // Show notification
+    // Fallback: try to discover API URL if core access failed
+    if (!apiUrl) {
+      // NS8 API server listens on port 9311 on the leader node
+      apiUrl = window.location.origin + '/api/';
+    }
+
+    function getHeaders() {
+      const h = { 'Content-Type': 'application/json' };
+      if (authToken) h['Authorization'] = 'Bearer ' + authToken;
+      return h;
+    }
+
     function showNotification(type, message) {
       const el = document.getElementById('notification');
       el.className = 'notification ' + type;
       el.textContent = message;
-      if (type === 'success') {
-        setTimeout(() => { el.className = 'notification'; }, 5000);
-      }
+      if (type === 'success') setTimeout(() => { el.className = 'notification'; }, 8000);
     }
 
-    // Update status badge
-    function updateStatus(configured) {
+    function updateStatus(configured, domain) {
       const badge = document.getElementById('statusBadge');
       const text = document.getElementById('statusText');
-      if (configured) {
+      const linkRow = document.getElementById('appLink');
+      const appUrl = document.getElementById('appUrl');
+      if (configured && domain) {
         badge.className = 'status-badge configured';
         text.textContent = 'Konfiguriert';
+        appUrl.href = 'https://' + domain;
+        appUrl.textContent = '\u2192 ' + domain + ' öffnen';
+        linkRow.style.display = 'block';
       } else {
         badge.className = 'status-badge unconfigured';
         text.textContent = 'Nicht konfiguriert';
+        linkRow.style.display = 'none';
       }
     }
 
-    // Load current configuration from the NS8 agent
+    // Submit a task to the NS8 cluster API and wait for completion
+    async function submitTask(action, data) {
+      // NS8 task submission endpoint
+      const taskPayload = {
+        action: action,
+        data: data,
+        extra: {
+          title: 'SimpleStaff: ' + action,
+          isNotificationHidden: false,
+        },
+      };
+
+      const resp = await fetch(apiUrl + 'module/' + moduleId + '/tasks', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(taskPayload),
+      });
+
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        throw new Error('HTTP ' + resp.status + ': ' + errorText);
+      }
+
+      const result = await resp.json();
+      const taskId = result.data && result.data.id;
+      if (!taskId) return result;
+
+      // Poll for task completion
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+          const statusResp = await fetch(apiUrl + 'module/' + moduleId + '/tasks/' + taskId + '/status', {
+            headers: getHeaders(),
+          });
+          if (statusResp.ok) {
+            const statusData = await statusResp.json();
+            if (statusData.data && statusData.data.exit_code !== undefined) {
+              return statusData.data;
+            }
+          }
+        } catch (e) { /* keep polling */ }
+      }
+      throw new Error('Task timeout');
+    }
+
+    // Load current configuration
     async function loadConfiguration() {
       try {
-        const resp = await fetch(API_BASE + 'module/' + moduleId + '/tasks', {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            action: 'get-configuration',
-            data: {},
-          }),
-        });
-
-        if (!resp.ok) throw new Error('API returned ' + resp.status);
-
-        const result = await resp.json();
-
-        // Poll for task result
-        if (result && result.data && result.data.id) {
-          const taskResult = await pollTask(result.data.id);
-          if (taskResult && taskResult.output) {
-            const config = taskResult.output;
-            if (config.domain_name) {
-              document.getElementById('domain_name').value = config.domain_name;
-              document.getElementById('super_admin_email').value = config.super_admin_email || '';
-              updateStatus(true);
-            }
+        const result = await submitTask('get-configuration', {});
+        if (result && result.output) {
+          const config = result.output;
+          if (config.domain_name) {
+            document.getElementById('domain_name').value = config.domain_name;
+            document.getElementById('super_admin_email').value = config.super_admin_email || '';
+            updateStatus(true, config.domain_name);
           }
         }
       } catch (e) {
         console.warn('Could not load configuration:', e);
-        // Non-critical: form will show empty fields
       }
-    }
-
-    // Poll a task until completion
-    async function pollTask(taskId) {
-      const maxAttempts = 30;
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise(r => setTimeout(r, 1000));
-        try {
-          const resp = await fetch(API_BASE + 'task/status/' + taskId, {
-            headers: getAuthHeaders(),
-          });
-          if (!resp.ok) continue;
-          const result = await resp.json();
-          if (result && result.data) {
-            const status = result.data.status || result.data.exit_code;
-            if (status !== undefined && status !== null) {
-              return result.data;
-            }
-          }
-        } catch (e) {
-          console.warn('Poll error:', e);
-        }
-      }
-      return null;
     }
 
     // Handle form submission
     document.getElementById('configForm').addEventListener('submit', async function(e) {
       e.preventDefault();
-
       const btn = document.getElementById('saveBtn');
       btn.disabled = true;
-      btn.textContent = 'Speichern...';
-      showNotification('loading', 'Konfiguration wird gespeichert...');
+      btn.textContent = 'Wird gespeichert...';
+      showNotification('loading', 'Konfiguration wird gespeichert und Traefik-Route wird eingerichtet...');
 
       const data = {
         domain_name: document.getElementById('domain_name').value,
@@ -364,42 +234,22 @@
       };
 
       try {
-        const resp = await fetch(API_BASE + 'module/' + moduleId + '/tasks', {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            action: 'configure-module',
-            data: data,
-          }),
-        });
-
-        if (!resp.ok) throw new Error('API returned ' + resp.status);
-
-        const result = await resp.json();
-
-        // Poll for task completion
-        if (result && result.data && result.data.id) {
-          const taskResult = await pollTask(result.data.id);
-          if (taskResult && taskResult.exit_code === 0) {
-            showNotification('success', 'Konfiguration erfolgreich gespeichert! SimpleStaff ist unter https://' + data.domain_name + ' erreichbar.');
-            updateStatus(true);
-          } else {
-            throw new Error('Task failed: ' + JSON.stringify(taskResult));
-          }
+        const result = await submitTask('configure-module', data);
+        if (result && result.exit_code === 0) {
+          showNotification('success', 'Konfiguration erfolgreich! SimpleStaff ist unter https://' + data.domain_name + ' erreichbar.');
+          updateStatus(true, data.domain_name);
         } else {
-          showNotification('success', 'Konfigurationsauftrag wurde gesendet.');
-          updateStatus(true);
+          const errMsg = (result && result.error) ? result.error : JSON.stringify(result);
+          throw new Error(errMsg);
         }
       } catch (e) {
-        showNotification('error', 'Fehler beim Speichern: ' + e.message);
-        console.error('Configure error:', e);
+        showNotification('error', 'Fehler: ' + e.message);
       } finally {
         btn.disabled = false;
-        btn.innerHTML = 'Konfiguration speichern<svg viewBox="0 0 32 32"><path d="M28 6H4a2 2 0 00-2 2v16a2 2 0 002 2h24a2 2 0 002-2V8a2 2 0 00-2-2zM4 24V8h24v16z"/><path d="M16 10l-6 6h4v6h4v-6h4l-6-6z"/></svg>';
+        btn.textContent = 'Konfiguration speichern';
       }
     });
 
-    // Load configuration on page load
     loadConfiguration();
   </script>
 </body>
