@@ -1,4 +1,5 @@
 # Force Unix line endings (LF) for scripts to prevent execution errors on Linux
-imageroot/bin/configure-module text eol=lf
+imageroot/actions/configure-module text eol=lf
+imageroot/actions/get-configuration text eol=lf
 imageroot/update-module.d/10_restart text eol=lf
 *.sh text eol=lf

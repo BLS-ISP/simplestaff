@@ -80,7 +80,7 @@ Nach der Installation konfigurieren wir die Umgebungsvariablen (wie Passwörter,
 1. **Konfigurationsskript ausführen (JSON übergeben):**
    Geben Sie die Ziel-Domain `time.bls-isp.net` und die Admin-Daten an. Sichere Datenbankpasswörter und Verschlüsselungs-Schlüssel werden automatisch erzeugt.
    ```bash
-   echo '{"domain_name":"time.bls-isp.net", "super_admin_email":"admin@test.local", "super_admin_password":"admin123"}' | runagent -m simplestaff1 .config/bin/configure-module
+   echo '{"domain_name":"time.bls-isp.net", "super_admin_email":"admin@test.local", "super_admin_password":"admin123"}' | runagent -m simplestaff1 .config/actions/configure-module
    ```
 
 2. **Dienst starten (falls nicht bereits aktiv):**
