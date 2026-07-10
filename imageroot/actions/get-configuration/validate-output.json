@@ -1,0 +1,20 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "get-configuration output",
+    "description": "SimpleStaff module configuration output schema",
+    "type": "object",
+    "properties": {
+        "domain_name": {
+            "type": "string",
+            "title": "Domain name"
+        },
+        "super_admin_email": {
+            "type": "string",
+            "title": "Super admin email"
+        },
+        "super_admin_password": {
+            "type": "string",
+            "title": "Super admin password"
+        }
+    }
+}

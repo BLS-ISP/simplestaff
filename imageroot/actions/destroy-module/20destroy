@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+
+#
+# SimpleStaff - NS8 destroy-module action
+# Cleans up Traefik routes and stops services when the module is removed.
+#
+
+import sys
+import os
+import agent
+import agent.tasks
+import subprocess
+
+module_id = os.environ['MODULE_ID']
+
+# Remove the Traefik route for this module instance
+response = agent.tasks.run(
+    agent_id=agent.resolve_agent_id('traefik@node'),
+    action='delete-route',
+    data={
+        'instance': module_id,
+    },
+)
+
+# Stop and disable the service
+subprocess.run(['systemctl', '--user', 'disable', '--now', 'simplestaff.service'], check=False)

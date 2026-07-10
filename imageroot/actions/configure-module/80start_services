@@ -1,0 +1,13 @@
+#!/bin/bash
+
+#
+# SimpleStaff - Start services after configuration
+#
+
+set -e
+
+# Redirect output to journal (stderr)
+exec 1>&2
+
+systemctl --user daemon-reload
+systemctl --user enable --now simplestaff.service

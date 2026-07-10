@@ -1,0 +1,27 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "configure-module input",
+    "description": "SimpleStaff module configuration input schema",
+    "type": "object",
+    "required": ["domain_name", "super_admin_email", "super_admin_password"],
+    "properties": {
+        "domain_name": {
+            "type": "string",
+            "title": "Domain name",
+            "description": "The FQDN where SimpleStaff will be accessible (e.g. time.bls-isp.net)",
+            "minLength": 1
+        },
+        "super_admin_email": {
+            "type": "string",
+            "title": "Super admin email",
+            "format": "email",
+            "description": "Email address for the super admin account"
+        },
+        "super_admin_password": {
+            "type": "string",
+            "title": "Super admin password",
+            "description": "Password for the super admin account",
+            "minLength": 6
+        }
+    }
+}

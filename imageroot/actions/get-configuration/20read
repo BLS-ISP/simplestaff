@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+
+#
+# SimpleStaff - NS8 get-configuration action
+# Returns current module configuration as JSON to stdout.
+#
+
+import os
+import json
+import sys
+
+config = {
+    "domain_name": os.environ.get('DOMAIN_NAME', ''),
+    "super_admin_email": os.environ.get('SUPER_ADMIN_EMAIL', ''),
+    "super_admin_password": os.environ.get('SUPER_ADMIN_PASSWORD', ''),
+}
+
+json.dump(config, fp=sys.stdout)

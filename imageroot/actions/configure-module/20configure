@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+
+#
+# SimpleStaff - NS8 configure-module action
+# Reads configuration from stdin JSON and persists environment variables.
+# Registers a Traefik route for HTTPS access.
+#
+
+import json
+import sys
+import agent
+import agent.tasks
+import os
+import secrets
+
+# Read JSON payload from stdin
+request = json.load(sys.stdin)
+
+# Extract required fields
+domain_name = request['domain_name']
+super_admin_email = request['super_admin_email']
+super_admin_password = request['super_admin_password']
+
+# Generate cryptographically secure secrets if not already set
+db_password = os.environ.get('DATABASE_PASSWORD', '') or secrets.token_hex(16)
+jwt_secret = os.environ.get('JWT_SECRET', '') or secrets.token_hex(32)
+
+# Persist all environment variables via the NS8 agent API
+agent.set_env('DOMAIN_NAME', domain_name)
+agent.set_env('SUPER_ADMIN_EMAIL', super_admin_email)
+agent.set_env('SUPER_ADMIN_PASSWORD', super_admin_password)
+agent.set_env('DATABASE_PASSWORD', db_password)
+agent.set_env('JWT_SECRET', jwt_secret)
+
+# Ensure the postgres data volume directory exists
+os.makedirs(os.path.expanduser('~/.config/state/postgres_data'), exist_ok=True)
+
+# Configure Traefik reverse proxy route for HTTPS with Let's Encrypt
+response = agent.tasks.run(
+    agent_id=agent.resolve_agent_id('traefik@node'),
+    action='set-route',
+    data={
+        'instance': os.environ['MODULE_ID'],
+        'url': 'http://127.0.0.1:' + os.environ['TCP_PORT'],
+        'host': domain_name,
+        'lets_encrypt': True,
+        'http2https': True,
+    },
+)
+agent.assert_exp(response['exit_code'] == 0, "Failed to configure Traefik route")
