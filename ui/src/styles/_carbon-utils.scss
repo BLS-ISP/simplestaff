@@ -1,5 +1,9 @@
+// Carbon Design System utilities for NS8 modules
 @import "~carbon-components/scss/globals/scss/vendor/@carbon/elements/scss/themes/mixins";
 @import "~carbon-components/scss/globals/scss/_theme-tokens.scss";
 @import "~carbon-components/scss/globals/scss/_css--helpers.scss";
 @import "~carbon-components/scss/globals/scss/vendor/@carbon/layout/scss/generated/layout";
 @import "~carbon-components/scss/globals/scss/vendor/@carbon/type/scss/_styles.scss";
+
+// Module-specific variables
+$side-menu-width: 16rem;

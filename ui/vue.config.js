@@ -1,3 +1,5 @@
+const path = require("path");
+
 module.exports = {
   publicPath: "./",
   transpileDependencies: ["axios"],
@@ -23,6 +25,13 @@ module.exports = {
     loaderOptions: {
       sass: {
         sassOptions: {
+          includePaths: [
+            path.resolve(__dirname, "node_modules"),
+            path.resolve(
+              __dirname,
+              "node_modules/carbon-components/scss/globals/scss/vendor"
+            ),
+          ],
           silenceDeprecations: [
             "import",
             "global-builtin",
