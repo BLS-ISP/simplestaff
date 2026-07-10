@@ -32,16 +32,22 @@ Da es sich um ein **privates Repository** handelt, müssen Sie dem Nethserver-Ho
    * Erzeugen Sie einen neuen Token (Klassisch) mit dem Scope **`read:packages`**. Kopieren Sie den Token.
 
 2. **Podman einloggen:**
-   * Loggen Sie sich als der rootless Modul-Benutzer (`simplestaff1`) auf der Nethserver-Konsole ein.
-   * Führen Sie den Login-Befehl aus und verwenden Sie Ihren GitHub-Benutzernamen und den Token als Passwort:
+   * Loggen Sie sich als **root** auf der Nethserver-Konsole ein.
+   * Führen Sie den Login-Befehl mit der offiziellen Nethserver-Registry-Konfiguration aus:
      ```bash
-     podman login ghcr.io
+     podman login --authfile=/etc/nethserver/registry.json ghcr.io
      # Username: BLS-ISP
      # Password: <Dein GitHub Personal Access Token (PAT)>
      ```
-   * Podman speichert die Zugangsdaten im verschlüsselten Benutzerordner. Das Modul kann ab sofort die privaten Images vollautomatisch laden.
 
-3. **Vorkonfiguration:**
+3. **Berechtigungen vergeben:**
+   * Damit der spätere rootless Anwendungsbenutzer die Anmeldeinformationen lesen und die Images herunterladen kann, müssen Sie Leserechte vergeben:
+     ```bash
+     chmod -c a+rx /etc/nethserver
+     chmod -c a+r /etc/nethserver/registry.json
+     ```
+
+4. **Vorkonfiguration:**
    * Die Image-Pfade in `/home/simplestaff1/.config/systemd/user/simplestaff.service` sind bereits fest auf Ihre Organisation `bls-isp` vorkonfiguriert. Es ist keine manuelle Pfad-Anpassung nötig.
 
 ---
