@@ -40,7 +40,7 @@ export default {
       let instanceName = "";
       try {
         // Try hash-based routing first (standard NS8 pattern)
-        const hashMatch = /#\/apps\/(\w+)/.exec(window.parent.location.hash);
+        const hashMatch = /#\/apps\/([a-zA-Z0-9_-]+)/.exec(window.parent.location.hash);
         if (hashMatch && hashMatch[1]) {
           instanceName = hashMatch[1];
         }
