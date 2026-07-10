@@ -2,22 +2,22 @@
 # ============================================
 # SimpleStaff - NS8 Update Module Hook
 # ============================================
-# This script runs after NS8 pulls a new module image.
-# NethServer 8 core automatically pulls the updated container images
-# referenced in org.nethserver.images. We only need to restart the service.
 
-set -e
 exec 1>&2  # Redirect stdout to stderr for journald logging
-
 echo "SimpleStaff: Update hook starting..."
 
 if [ -f environment ]; then
+    echo "SimpleStaff: Loading environment variables..."
     set -a
     . ./environment
     set +a
 fi
 
-systemctl --user daemon-reload
+echo "SimpleStaff: Reloading systemd daemon..."
+systemctl --user daemon-reload || true
+
+echo "SimpleStaff: Restarting simplestaff.service..."
 systemctl --user restart simplestaff.service || true
 
-echo "SimpleStaff: Update completed successfully."
+echo "SimpleStaff: Update hook completed successfully."
+exit 0
