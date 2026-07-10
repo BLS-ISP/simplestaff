@@ -416,7 +416,9 @@ pub async fn delete_shift_swap(
         let role = auth.role.clone();
         let user_id = auth.user_id;
         Box::pin(async move {
-            let swap = shift_swap::Entity::find_by_id(swap_id)
+            let swap = shift_swap::Entity::find()
+                .filter(shift_swap::Column::Id.eq(swap_id))
+                .filter(shift_swap::Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Tauschantrag nicht gefunden".to_string()))?;

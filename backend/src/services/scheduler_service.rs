@@ -70,11 +70,15 @@ pub async fn run_auto_schedule(
 
     // 2. Fetch active employees & all shift types
     let active_employees = employee::Entity::find()
+        .filter(employee::Column::TenantId.eq(*tenant_id))
         .filter(employee::Column::IsActive.eq(true))
         .all(db)
         .await?;
 
-    let all_shift_types = ShiftType::find().all(db).await?;
+    let all_shift_types = ShiftType::find()
+        .filter(shift_type::Column::TenantId.eq(*tenant_id))
+        .all(db)
+        .await?;
     let active_shift_types: Vec<&shift_type::Model> = all_shift_types
         .iter()
         .filter(|st| st.is_active)
@@ -82,6 +86,7 @@ pub async fn run_auto_schedule(
 
     // 3. Fetch vacations, blocked days, and closed days in the range
     let vacations = employee_vacation::Entity::find()
+        .filter(employee_vacation::Column::TenantId.eq(*tenant_id))
         .filter(employee_vacation::Column::Status.eq("approved"))
         .filter(
             employee_vacation::Column::StartDate.lte(end_date)
@@ -91,12 +96,14 @@ pub async fn run_auto_schedule(
         .await?;
 
     let blocked_days = employee_blocked_day::Entity::find()
+        .filter(employee_blocked_day::Column::TenantId.eq(*tenant_id))
         .filter(employee_blocked_day::Column::BlockedDate.gte(start_date))
         .filter(employee_blocked_day::Column::BlockedDate.lte(end_date))
         .all(db)
         .await?;
 
     let closed_days = closed_day::Entity::find()
+        .filter(closed_day::Column::TenantId.eq(*tenant_id))
         .filter(closed_day::Column::ClosedDate.gte(start_date))
         .filter(closed_day::Column::ClosedDate.lte(end_date))
         .all(db)
@@ -110,6 +117,7 @@ pub async fn run_auto_schedule(
     let query_end = end_date + Duration::days((6 - weekday_end) as i64);
 
     let existing_assignments = ShiftAssignment::find()
+        .filter(shift_assignment::Column::TenantId.eq(*tenant_id))
         .filter(shift_assignment::Column::AssignmentDate.gte(query_start))
         .filter(shift_assignment::Column::AssignmentDate.lte(query_end))
         .filter(
@@ -294,6 +302,7 @@ pub async fn run_auto_schedule(
 
     // Clear existing assignments in the range
     ShiftAssignment::delete_many()
+        .filter(shift_assignment::Column::TenantId.eq(*tenant_id))
         .filter(shift_assignment::Column::AssignmentDate.gte(start_date))
         .filter(shift_assignment::Column::AssignmentDate.lte(end_date))
         .exec(&txn)

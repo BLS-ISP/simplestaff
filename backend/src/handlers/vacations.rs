@@ -86,6 +86,16 @@ pub async fn list_vacations(
 ) -> Result<Json<Vec<VacationResponse>>, AppError> {
     let vacations = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
+            let emp_exists = employee::Entity::find()
+                .filter(employee::Column::Id.eq(employee_id))
+                .filter(employee::Column::TenantId.eq(auth.tenant_id))
+                .one(txn)
+                .await?
+                .is_some();
+            if !emp_exists {
+                return Err(AppError::NotFound("Employee not found".to_string()));
+            }
+
             Vacation::find()
                 .filter(Column::TenantId.eq(auth.tenant_id))
                 .filter(Column::EmployeeId.eq(employee_id))
@@ -119,6 +129,16 @@ pub async fn create_vacation(
 
     let vacation = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
+            let emp_exists = employee::Entity::find()
+                .filter(employee::Column::Id.eq(employee_id))
+                .filter(employee::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .is_some();
+            if !emp_exists {
+                return Err(AppError::NotFound("Employee not found".to_string()));
+            }
+
             let model = ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tenant_id: Set(tenant_id),

@@ -11,7 +11,7 @@ use crate::models::{employee, employee_blocked_day, employee_vacation, shift_ass
 /// based on the severity of the warnings.
 pub async fn validate_assignment(
     txn: &DatabaseTransaction,
-    _tenant_id: &Uuid,
+    tenant_id: &Uuid,
     employee_id: &Uuid,
     shift_type_id: &Uuid,
     assignment_date: &NaiveDate,
@@ -20,7 +20,9 @@ pub async fn validate_assignment(
     let mut warnings: Vec<ValidationWarning> = Vec::new();
 
     // Load the shift type we're about to assign
-    let shift_type = shift_type::Entity::find_by_id(*shift_type_id)
+    let shift_type = shift_type::Entity::find()
+        .filter(shift_type::Column::Id.eq(*shift_type_id))
+        .filter(shift_type::Column::TenantId.eq(*tenant_id))
         .one(txn)
         .await?
         .ok_or_else(|| AppError::NotFound("Shift type not found".to_string()))?;
@@ -29,6 +31,7 @@ pub async fn validate_assignment(
     let blocked = employee_blocked_day::Entity::find()
         .filter(
             Condition::all()
+                .add(employee_blocked_day::Column::TenantId.eq(*tenant_id))
                 .add(employee_blocked_day::Column::EmployeeId.eq(*employee_id))
                 .add(employee_blocked_day::Column::BlockedDate.eq(*assignment_date)),
         )
@@ -54,6 +57,7 @@ pub async fn validate_assignment(
     let vacation = employee_vacation::Entity::find()
         .filter(
             Condition::all()
+                .add(employee_vacation::Column::TenantId.eq(*tenant_id))
                 .add(employee_vacation::Column::EmployeeId.eq(*employee_id))
                 .add(employee_vacation::Column::StartDate.lte(*assignment_date))
                 .add(employee_vacation::Column::EndDate.gte(*assignment_date))
@@ -79,7 +83,9 @@ pub async fn validate_assignment(
 
     // ── 2.b Weekday availability (Sperrzeit) check ───────────────────────
     let day_of_week = assignment_date.weekday().number_from_monday();
-    let emp = employee::Entity::find_by_id(*employee_id)
+    let emp = employee::Entity::find()
+        .filter(employee::Column::Id.eq(*employee_id))
+        .filter(employee::Column::TenantId.eq(*tenant_id))
         .one(txn)
         .await?
         .ok_or_else(|| AppError::NotFound("Employee not found".to_string()))?;
@@ -138,6 +144,7 @@ pub async fn validate_assignment(
     let prev_day_assignments = shift_assignment::Entity::find()
         .filter(
             Condition::all()
+                .add(shift_assignment::Column::TenantId.eq(*tenant_id))
                 .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
                 .add(shift_assignment::Column::AssignmentDate.eq(previous_day)),
         )
@@ -147,7 +154,9 @@ pub async fn validate_assignment(
     let new_start = shift_type.start_time;
 
     for prev_assignment in &prev_day_assignments {
-        let prev_shift = shift_type::Entity::find_by_id(prev_assignment.shift_type_id)
+        let prev_shift = shift_type::Entity::find()
+            .filter(shift_type::Column::Id.eq(prev_assignment.shift_type_id))
+            .filter(shift_type::Column::TenantId.eq(*tenant_id))
             .one(txn)
             .await?
             .ok_or_else(|| AppError::NotFound("Previous shift type not found".to_string()))?;
@@ -207,6 +216,7 @@ pub async fn validate_assignment(
     let same_day_assignments = shift_assignment::Entity::find()
         .filter(
             Condition::all()
+                .add(shift_assignment::Column::TenantId.eq(*tenant_id))
                 .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
                 .add(shift_assignment::Column::AssignmentDate.eq(*assignment_date)),
         )
@@ -216,7 +226,9 @@ pub async fn validate_assignment(
     let mut total_daily_hours: f64 = 0.0;
 
     for assignment in &same_day_assignments {
-        let st = shift_type::Entity::find_by_id(assignment.shift_type_id)
+        let st = shift_type::Entity::find()
+            .filter(shift_type::Column::Id.eq(assignment.shift_type_id))
+            .filter(shift_type::Column::TenantId.eq(*tenant_id))
             .one(txn)
             .await?
             .ok_or_else(|| AppError::NotFound("Shift type not found".to_string()))?;
@@ -244,7 +256,9 @@ pub async fn validate_assignment(
     }
 
     // ── 5. Weekly hours exceeded ──────────────────────────────────────────
-    let employee_record = employee::Entity::find_by_id(*employee_id)
+    let employee_record = employee::Entity::find()
+        .filter(employee::Column::Id.eq(*employee_id))
+        .filter(employee::Column::TenantId.eq(*tenant_id))
         .one(txn)
         .await?
         .ok_or_else(|| AppError::NotFound("Employee not found".to_string()))?;
@@ -259,6 +273,7 @@ pub async fn validate_assignment(
     let weekly_assignments = shift_assignment::Entity::find()
         .filter(
             Condition::all()
+                .add(shift_assignment::Column::TenantId.eq(*tenant_id))
                 .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
                 .add(shift_assignment::Column::AssignmentDate.gte(week_start))
                 .add(shift_assignment::Column::AssignmentDate.lte(week_end)),
@@ -269,7 +284,9 @@ pub async fn validate_assignment(
     let mut total_weekly_hours: f64 = 0.0;
 
     for assignment in &weekly_assignments {
-        let st = shift_type::Entity::find_by_id(assignment.shift_type_id)
+        let st = shift_type::Entity::find()
+            .filter(shift_type::Column::Id.eq(assignment.shift_type_id))
+            .filter(shift_type::Column::TenantId.eq(*tenant_id))
             .one(txn)
             .await?
             .ok_or_else(|| AppError::NotFound("Shift type not found".to_string()))?;
@@ -301,6 +318,7 @@ pub async fn validate_assignment(
 
     // ── 6a. Holiday validity check ────────────────────────────────────────
     let is_holiday = crate::models::closed_day::Entity::find()
+        .filter(crate::models::closed_day::Column::TenantId.eq(*tenant_id))
         .filter(crate::models::closed_day::Column::ClosedDate.eq(*assignment_date))
         .filter(crate::models::closed_day::Column::IsHoliday.eq(true))
         .one(txn)
@@ -376,6 +394,7 @@ pub async fn validate_assignment(
         let current_staff_count = shift_assignment::Entity::find()
             .filter(
                 Condition::all()
+                    .add(shift_assignment::Column::TenantId.eq(*tenant_id))
                     .add(shift_assignment::Column::ShiftTypeId.eq(*shift_type_id))
                     .add(shift_assignment::Column::AssignmentDate.eq(*assignment_date))
             )
@@ -385,6 +404,7 @@ pub async fn validate_assignment(
         let already_assigned = shift_assignment::Entity::find()
             .filter(
                 Condition::all()
+                    .add(shift_assignment::Column::TenantId.eq(*tenant_id))
                     .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
                     .add(shift_assignment::Column::ShiftTypeId.eq(*shift_type_id))
                     .add(shift_assignment::Column::AssignmentDate.eq(*assignment_date))
@@ -444,6 +464,7 @@ pub async fn validate_assignment(
 
     // ── 8. Closed days / Public holidays check ────────────────────────────
     let closed_day = crate::models::closed_day::Entity::find()
+        .filter(crate::models::closed_day::Column::TenantId.eq(*tenant_id))
         .filter(crate::models::closed_day::Column::ClosedDate.eq(*assignment_date))
         .one(txn)
         .await?;
