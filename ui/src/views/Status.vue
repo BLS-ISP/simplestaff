@@ -393,7 +393,23 @@ export default {
       this.loading.getStatus = false;
     },
     getStatusCompleted(taskContext, taskResult) {
-      this.status = taskResult.output;
+      if (taskResult && taskResult.output) {
+        this.status = {
+          instance: taskResult.output.instance || "",
+          services: taskResult.output.services || [],
+          images: taskResult.output.images || [],
+          volumes: taskResult.output.volumes || [],
+          node: taskResult.output.node || "",
+          node_ui_name: taskResult.output.node_ui_name || "",
+        };
+      } else {
+        this.status = {
+          instance: "",
+          services: [],
+          images: [],
+          volumes: [],
+        };
+      }
       this.loading.getStatus = false;
     },
     async listBackupRepositories() {

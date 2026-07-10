@@ -83,4 +83,5 @@ try:
 except Exception as e:
     print(f"Warning: could not list volumes: {e}", file=sys.stderr)
 
-json.dump(status, fp=open("output.json", "w"))
+json.dump(status, fp=sys.stdout)
+sys.stdout.flush()
