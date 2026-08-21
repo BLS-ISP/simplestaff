@@ -118,17 +118,25 @@ pub async fn send_email(
         host, port, to
     );
 
-    let mut transport_builder = if port == 465 {
-        AsyncSmtpTransport::<Tokio1Executor>::relay(&host)
-            .map_err(|e| format!("SMTP SSL relay error on port 465: {e}"))?
-            .port(port)
-    } else if port == 25 {
-        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&host)
-            .port(port)
+    let mut transport_builder = if port == 25 {
+        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&host).port(port)
     } else {
-        AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&host)
-            .map_err(|e| format!("SMTP STARTTLS relay error on port {port}: {e}"))?
-            .port(port)
+        use lettre::transport::smtp::client::{Tls, TlsParameters};
+        let tls_params = TlsParameters::builder(host.clone())
+            .dangerous_accept_invalid_certs(true)
+            .dangerous_accept_invalid_hostnames(true)
+            .build()
+            .map_err(|e| format!("TLS parameter error: {e}"))?;
+
+        if port == 465 {
+            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&host)
+                .port(port)
+                .tls(Tls::Wrapper(tls_params))
+        } else {
+            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&host)
+                .port(port)
+                .tls(Tls::Required(tls_params))
+        }
     };
 
     if let (Some(user), Some(pass)) = (&config.smtp_user, &config.smtp_password) {

@@ -3,6 +3,7 @@
 #
 # SimpleStaff - Send Test Email Action
 # Verifies SMTP connectivity and sends a test email to the administrator.
+# Supports self-signed certificates and internal SMTP servers.
 #
 
 import os
@@ -68,7 +69,7 @@ html_content = f"""<!DOCTYPE html>
   <meta charset="UTF-8">
   <style>
     body {{ font-family: sans-serif; background: #f8fafc; color: #0f172a; padding: 20px; }}
-    .card {{ background: #ffffff; max-width: 500px; margin: 0 auto; border-radius: 10px; border: 1px solid #e2e8f0; padding: 24px; }}
+    .card {{ background: #ffffff; max-width: 500px; margin: 0 auto; border-radius: 10px; border: 1px solid #e2e8f0; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }}
     .header {{ color: #4338ca; font-size: 20px; font-weight: bold; margin-bottom: 12px; }}
     .badge {{ background: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 13px; }}
     .footer {{ margin-top: 24px; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 12px; }}
@@ -94,10 +95,14 @@ html_content = f"""<!DOCTYPE html>
 msg.set_content(f"SimpleStaff Test-E-Mail: Die SMTP-Konfiguration für {host}:{port} ist erfolgreich.")
 msg.add_alternative(html_content, subtype='html')
 
+# Setup SSL context that permits internal/self-signed certificates
+context = ssl.create_default_context()
+context.check_hostname = False
+context.verify_mode = ssl.CERT_NONE
+
 try:
     print(f"Connecting to SMTP server {host}:{port}...", file=sys.stderr)
     if port == 465:
-        context = ssl.create_default_context()
         with smtplib.SMTP_SSL(host, port, context=context, timeout=15) as server:
             if user and password:
                 server.login(user, password)
@@ -106,12 +111,8 @@ try:
         with smtplib.SMTP(host, port, timeout=15) as server:
             server.ehlo()
             if port != 25:
-                try:
-                    context = ssl.create_default_context()
-                    server.starttls(context=context)
-                    server.ehlo()
-                except Exception as e:
-                    print(f"STARTTLS warning: {e}", file=sys.stderr)
+                server.starttls(context=context)
+                server.ehlo()
             if user and password:
                 server.login(user, password)
             server.send_message(msg)
