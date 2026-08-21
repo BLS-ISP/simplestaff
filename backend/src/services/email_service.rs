@@ -342,3 +342,34 @@ pub fn notify_role_updated(
         let _ = send_email(&config, &employee_email, &subject, &html).await;
     });
 }
+
+/// 7. Notification when employee's password is reset / changed by admin.
+pub fn notify_password_changed(
+    config: Arc<Config>,
+    employee_email: String,
+    employee_name: String,
+    new_password: Option<String>,
+) {
+    tokio::spawn(async move {
+        let subject = "Dein SimpleStaff-Passwort wurde aktualisiert".to_string();
+
+        let pw_info = new_password
+            .map(|p| format!("<p style=\"margin:4px 0;\"><strong>Neues Passwort:</strong> <code>{}</code></p>", p))
+            .unwrap_or_else(|| "<p style=\"margin:4px 0;\">Das Passwort wurde von der Betriebsleitung zurückgesetzt.</p>".to_string());
+
+        let content = format!(
+            r#"<h2 style="margin-top:0; color:#0f172a;">Passwort aktualisiert</h2>
+            <p>Hallo {employee_name},</p>
+            <p>dein Passwort für den Zugriff auf SimpleStaff wurde soeben aktualisiert:</p>
+            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin:16px 0;">
+              <p style="margin:4px 0;"><strong>E-Mail / Login:</strong> {employee_email}</p>
+              {pw_info}
+            </div>
+            <p>Bitte melde dich mit den neuen Zugangsdaten an und ändere dein Passwort bei Bedarf im Profil.</p>"#
+        );
+
+        let html = wrap_html(&subject, &content, &config.app_base_url);
+        let _ = send_email(&config, &employee_email, &subject, &html).await;
+    });
+}
+

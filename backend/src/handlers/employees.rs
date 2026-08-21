@@ -618,7 +618,7 @@ async fn update_employee_user_account(
     let tenant_id = auth.tenant_id;
     let now = chrono::Utc::now().fixed_offset();
 
-    let (updated_user, role_changed, emp_email, emp_name, new_role) = execute_with_tenant(&state.db, &tenant_id, |txn| {
+    let (updated_user, role_changed, emp_email, emp_name, new_role, pw_changed, plain_pw) = execute_with_tenant(&state.db, &tenant_id, |txn| {
         let payload = payload;
         Box::pin(async move {
             let emp = Employee::find()
@@ -684,6 +684,8 @@ async fn update_employee_user_account(
                 active_u.is_active = Set(act);
             }
 
+            let mut pw_changed = false;
+            let mut plain_pw = None;
             if let Some(new_pw) = payload.password.filter(|p| !p.trim().is_empty()) {
                 if new_pw.len() < 6 {
                     return Err(AppError::BadRequest("Das Passwort muss mindestens 6 Zeichen lang sein.".to_string()));
@@ -696,14 +698,25 @@ async fn update_employee_user_account(
                     .map_err(|e| AppError::InternalError(format!("Passworthash fehlgeschlagen: {e}")))?
                     .to_string();
                 active_u.password_hash = Set(password_hash);
+                pw_changed = true;
+                plain_pw = Some(new_pw);
             }
 
             active_u.updated_at = Set(now);
             let updated = active_u.update(txn).await?;
-            Ok((updated, role_changed, emp_email, full_name, target_role))
+            Ok((updated, role_changed, emp_email, full_name, target_role, pw_changed, plain_pw))
         })
     })
     .await?;
+
+    if pw_changed {
+        crate::services::email_service::notify_password_changed(
+            state.config.clone(),
+            emp_email.clone(),
+            emp_name.clone(),
+            plain_pw,
+        );
+    }
 
     if role_changed {
         crate::services::email_service::notify_role_updated(
