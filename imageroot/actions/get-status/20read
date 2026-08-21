@@ -2,7 +2,7 @@
 
 #
 # SimpleStaff - NS8 get-status action
-# Returns status, services, images, and volumes information as JSON to stdout.
+# Returns live status, container services, images, and volumes information as JSON to stdout.
 #
 
 import os
@@ -25,8 +25,10 @@ try:
     module_id = os.environ.get('MODULE_ID', '')
     node_id = os.environ.get('NODE_ID', '1')
 
-    # Get service status via systemctl --user
+    # 1. Services / Containers Status
     services = []
+    
+    # Query systemd service status
     try:
         res = subprocess.run(
             ['systemctl', '--user', 'is-active', 'simplestaff.service'],
@@ -38,51 +40,107 @@ try:
         is_active = (status_str == 'active')
         is_failed = (status_str == 'failed')
         services.append({
-            "name": "simplestaff",
+            "name": "simplestaff.service",
             "status": "running" if is_active else ("failed" if is_failed else "inactive"),
             "active": is_active,
             "failed": is_failed
         })
     except Exception:
         services.append({
-            "name": "simplestaff",
+            "name": "simplestaff.service",
             "status": "unknown",
             "active": False,
             "failed": False
         })
 
-    # Images
-    images = [
-        {
-            "name": os.environ.get('SIMPLESTAFF_BACKEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-backend:latest'),
-            "size": "-",
-            "created": "-"
-        },
-        {
-            "name": os.environ.get('SIMPLESTAFF_FRONTEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-frontend:latest'),
-            "size": "-",
-            "created": "-"
-        },
-        {
-            "name": os.environ.get('POSTGRES_IMAGE', 'docker.io/library/postgres:15-alpine'),
-            "size": "-",
-            "created": "-"
-        }
+    # Query Podman containers
+    try:
+        res_ps = subprocess.run(
+            ['podman', 'ps', '-a', '--format', 'json'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if res_ps.returncode == 0 and res_ps.stdout.strip():
+            containers = json.loads(res_ps.stdout)
+            for c in containers:
+                names = c.get('Names', [])
+                c_name = names[0] if isinstance(names, list) and names else str(names)
+                if any(k in c_name for k in ['simplestaff-backend', 'simplestaff-frontend', 'simplestaff-db']):
+                    state = c.get('State', 'unknown')
+                    c_active = (state.lower() == 'running')
+                    services.append({
+                        "name": c_name.lstrip('/'),
+                        "status": state,
+                        "active": c_active,
+                        "failed": not c_active and state.lower() in ('exited', 'dead', 'failed')
+                    })
+    except Exception:
+        pass
+
+    # 2. Container Images with real size from podman
+    image_names = [
+        os.environ.get('SIMPLESTAFF_BACKEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-backend:latest'),
+        os.environ.get('SIMPLESTAFF_FRONTEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-frontend:latest'),
+        os.environ.get('POSTGRES_IMAGE', 'docker.io/library/postgres:15-alpine'),
     ]
 
-    # Volumes
+    images_info = {}
+    try:
+        res_img = subprocess.run(
+            ['podman', 'images', '--format', 'json'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if res_img.returncode == 0 and res_img.stdout.strip():
+            pod_imgs = json.loads(res_img.stdout)
+            for pi in pod_imgs:
+                names = pi.get('Names', []) or [pi.get('Repository', '') + ':' + pi.get('Tag', '')]
+                size_bytes = pi.get('Size', 0)
+                if isinstance(size_bytes, (int, float)) and size_bytes > 0:
+                    size_formatted = f"{size_bytes / (1024 * 1024):.1f} MB"
+                else:
+                    size_formatted = str(size_bytes)
+                
+                created_raw = pi.get('CreatedHuman', pi.get('Created', '-'))
+                for n in names:
+                    if n:
+                        images_info[n] = {"size": size_formatted, "created": str(created_raw)}
+    except Exception:
+        pass
+
+    images = []
+    for img_name in image_names:
+        info = images_info.get(img_name, {})
+        images.append({
+            "name": img_name,
+            "size": info.get("size", "-"),
+            "created": info.get("created", "-")
+        })
+
+    # 3. Persistent Volumes with real disk usage
+    vol_path = os.path.expanduser('~/state/postgres_data')
+    vol_size = "-"
+    try:
+        res_du = subprocess.run(['du', '-sh', vol_path], capture_output=True, text=True, timeout=3)
+        if res_du.returncode == 0 and res_du.stdout.strip():
+            vol_size = res_du.stdout.split()[0]
+    except Exception:
+        pass
+
     volumes = [
         {
             "name": "postgres_data",
-            "mount": os.path.expanduser('~/state/postgres_data'),
-            "created": "-"
+            "mount": vol_path,
+            "created": f"Größe: {vol_size}" if vol_size != "-" else "-"
         }
     ]
 
     status = {
         "instance": module_id,
         "node": node_id,
-        "node_ui_name": f"node-{node_id}",
+        "node_ui_name": f"Knoten {node_id}",
         "services": services,
         "images": images,
         "volumes": volumes
