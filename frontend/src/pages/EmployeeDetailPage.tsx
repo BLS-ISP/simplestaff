@@ -77,6 +77,9 @@ interface StammdatenTabProps {
 }
 
 function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+
   const [form, setForm] = useState({
     first_name: employee.first_name ?? '',
     last_name: employee.last_name ?? '',
@@ -87,24 +90,80 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
     is_active: employee.is_active,
   });
 
-  const [password, setPassword] = useState('start123');
-  const [creatingUser, setCreatingUser] = useState(false);
+  // User account state
+  const [userAccount, setUserAccount] = useState<{
+    has_account: boolean;
+    user_id?: string;
+    email?: string;
+    role?: string;
+    is_active?: boolean;
+  } | null>(null);
+  const [loadingAccount, setLoadingAccount] = useState(false);
+  const [accountRole, setAccountRole] = useState<string>('viewer');
+  const [accountActive, setAccountActive] = useState<boolean>(true);
+  const [accountPassword, setAccountPassword] = useState<string>('start123');
+  const [resetPassword, setResetPassword] = useState<string>('');
+  const [savingAccount, setSavingAccount] = useState(false);
+
+  const fetchUserAccount = useCallback(async () => {
+    try {
+      setLoadingAccount(true);
+      const res = await api.employees.getUserAccount(employee.id);
+      setUserAccount(res);
+      if (res.has_account && res.role) {
+        setAccountRole(res.role);
+        setAccountActive(res.is_active ?? true);
+      }
+    } catch (e) {
+      console.error('Error fetching user account:', e);
+    } finally {
+      setLoadingAccount(false);
+    }
+  }, [employee.id]);
+
+  useEffect(() => {
+    fetchUserAccount();
+  }, [fetchUserAccount]);
 
   const handleCreateLogin = async () => {
-    if (!password.trim() || password.length < 6) {
+    if (!accountPassword.trim() || accountPassword.length < 6) {
       alert('Das Passwort muss mindestens 6 Zeichen lang sein.');
       return;
     }
     try {
-      setCreatingUser(true);
-      await api.employees.createUser(employee.id, password.trim());
-      alert(`Benutzerkonto für ${employee.first_name || 'den Mitarbeiter'} wurde erfolgreich erstellt!\nDer Mitarbeiter kann sich nun mit der E-Mail-Adresse "${employee.email}" und dem Passwort "${password}" anmelden.`);
-      setPassword('start123');
+      setSavingAccount(true);
+      await api.employees.createUser(employee.id, accountPassword.trim(), accountRole);
+      alert(`Benutzerkonto für ${employee.first_name || 'den Mitarbeiter'} wurde erfolgreich als "${accountRole}" erstellt!`);
+      setAccountPassword('start123');
+      await fetchUserAccount();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Fehler beim Erstellen des Logins.');
     } finally {
-      setCreatingUser(false);
+      setSavingAccount(false);
+    }
+  };
+
+  const handleUpdateAccount = async () => {
+    if (resetPassword && resetPassword.trim().length < 6) {
+      alert('Das neue Passwort muss mindestens 6 Zeichen lang sein.');
+      return;
+    }
+    try {
+      setSavingAccount(true);
+      await api.employees.updateUserAccount(employee.id, {
+        role: accountRole,
+        is_active: accountActive,
+        password: resetPassword.trim() || undefined,
+      });
+      alert('Benutzerkonto und Zugriffsrechte wurden erfolgreich aktualisiert!');
+      setResetPassword('');
+      await fetchUserAccount();
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Fehler beim Aktualisieren des Benutzerkontos.');
+    } finally {
+      setSavingAccount(false);
     }
   };
 
@@ -243,7 +302,7 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
         </form>
       </div>
 
-      {/* Right Column: Status Summary & User Login Creation */}
+      {/* Right Column: Status Summary & User Login & Role Management */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
         {/* Info card */}
         <div className="glass-card animate-fade-in" style={{ padding: 'var(--space-xl)' }}>
@@ -287,39 +346,138 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
           </div>
         </div>
 
-        {/* Login Account card */}
+        {/* User Account & Leadership Role Card */}
         <div className="glass-card animate-fade-in" style={{ padding: 'var(--space-xl)' }}>
-          <h4 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 'var(--space-xs)' }}>
-            🔑 Benutzerkonto (Login)
-          </h4>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 'var(--space-md)' }}>
-            Schalte das Login für diesen Mitarbeiter frei. Er kann sich dann mit seiner E-Mail-Adresse und dem Passwort als Mitarbeiter (Viewer) anmelden.
-          </p>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-            <div className="form-group" style={{ margin: 0 }}>
-              <label style={labelStyle}>Passwort vergeben</label>
-              <input
-                className="input"
-                type="text"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Mind. 6 Zeichen, z.B. start123"
-              />
-            </div>
-            <button
-              type="button"
-              className="btn btn-neutral"
-              onClick={handleCreateLogin}
-              disabled={creatingUser || !employee.email}
-              style={{ width: '100%', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              {creatingUser ? 'Schaltet frei...' : 'Login freischalten'}
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-xs)' }}>
+            <h4 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+              🔑 Benutzerkonto & Zugriffsrechte
+            </h4>
+            {userAccount?.has_account && (
+              <span style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                padding: '3px 8px',
+                borderRadius: '6px',
+                background: userAccount.is_active ? '#dcfce7' : '#fee2e2',
+                color: userAccount.is_active ? '#166534' : '#991b1b',
+              }}>
+                {userAccount.is_active ? 'Account Aktiv' : 'Account Deaktiviert'}
+              </span>
+            )}
           </div>
+          
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 'var(--space-md)' }}>
+            Verwalte die Login-Berechtigungen und die Führungsrolle des Mitarbeiters im System.
+          </p>
+
+          {loadingAccount ? (
+            <div style={{ padding: 'var(--space-md)', textAlign: 'center', color: 'var(--text-secondary)' }}>
+              Lade Kontoinformationen…
+            </div>
+          ) : userAccount?.has_account ? (
+            /* Existing User Account Management */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}>Rolle / Berechtigungsstufe</label>
+                <select
+                  className="input"
+                  value={accountRole}
+                  onChange={(e) => setAccountRole(e.target.value)}
+                  disabled={!isAdmin}
+                >
+                  <option value="viewer">Mitarbeiter (Viewer – Eigene Dienste & Urlaube)</option>
+                  <option value="planner">Schichtleiter / Führungskraft (Planner – Pläne & Freigaben)</option>
+                  <option value="admin">Betriebsleiter (Administrator – Volle Mandanten-Rechte)</option>
+                </select>
+                {!isAdmin && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                    * Nur Administratoren können die Rolle ändern.
+                  </span>
+                )}
+              </div>
+
+              {isAdmin && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
+                  <input
+                    type="checkbox"
+                    id="acc_active"
+                    checked={accountActive}
+                    onChange={(e) => setAccountActive(e.target.checked)}
+                    style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
+                  />
+                  <label htmlFor="acc_active" style={{ fontSize: '0.85rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                    Login-Zugang ist aktiviert
+                  </label>
+                </div>
+              )}
+
+              {isAdmin && (
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label style={labelStyle}>Passwort neu vergeben (optional)</label>
+                  <input
+                    className="input"
+                    type="password"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    placeholder="Leer lassen, um Passwort nicht zu ändern"
+                  />
+                </div>
+              )}
+
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleUpdateAccount}
+                  disabled={savingAccount}
+                  style={{ width: '100%', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {savingAccount ? 'Speichern…' : 'Rolle & Zugangsdaten aktualisieren'}
+                </button>
+              )}
+            </div>
+          ) : (
+            /* Create New User Account */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}>Rolle / Berechtigungsstufe</label>
+                <select
+                  className="input"
+                  value={accountRole}
+                  onChange={(e) => setAccountRole(e.target.value)}
+                >
+                  <option value="viewer">Mitarbeiter (Viewer – Eigene Dienste & Urlaube)</option>
+                  <option value="planner">Schichtleiter / Führungskraft (Planner – Pläne & Freigaben)</option>
+                  <option value="admin">Betriebsleiter (Administrator – Volle Mandanten-Rechte)</option>
+                </select>
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}>Startpasswort vergeben</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={accountPassword}
+                  onChange={(e) => setAccountPassword(e.target.value)}
+                  placeholder="Mind. 6 Zeichen, z.B. start123"
+                />
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-neutral"
+                onClick={handleCreateLogin}
+                disabled={savingAccount || !employee.email}
+                style={{ width: '100%', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                {savingAccount ? 'Schaltet frei...' : 'Benutzerkonto freischalten'}
+              </button>
+            </div>
+          )}
+
           {!employee.email && (
             <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: 'var(--space-xs)', margin: 0 }}>
-              * Um den Login freizuschalten, muss oben eine E-Mail-Adresse eingetragen und gespeichert sein.
+              * Um ein Benutzerkonto zu verwalten, muss oben eine E-Mail-Adresse hinterlegt sein.
             </p>
           )}
         </div>

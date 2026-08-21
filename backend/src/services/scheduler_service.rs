@@ -1,6 +1,6 @@
 use chrono::{Datelike, Duration, NaiveDate, NaiveTime};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -28,12 +28,23 @@ fn calculate_duration(st: &shift_type::Model) -> f64 {
     (hours - break_hours).max(0.0)
 }
 
-fn calculate_rest(prev_end: NaiveTime, next_start: NaiveTime) -> f64 {
-    let midnight = chrono::NaiveTime::from_hms_opt(23, 59, 59).unwrap();
-    let hours_to_midnight = (midnight - prev_end).num_seconds() as f64 / 3600.0 + 1.0 / 3600.0;
-    let midnight_start = chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap();
-    let hours_from_midnight = (next_start - midnight_start).num_seconds() as f64 / 3600.0;
-    hours_to_midnight + hours_from_midnight
+fn calculate_rest(prev_start: NaiveTime, prev_end: NaiveTime, next_start: NaiveTime) -> f64 {
+    let is_overnight = prev_end < prev_start;
+    if is_overnight {
+        // Shift started yesterday and ended today at prev_end
+        if next_start > prev_end {
+            (next_start - prev_end).num_seconds() as f64 / 3600.0
+        } else {
+            0.0
+        }
+    } else {
+        // Shift ended yesterday before midnight
+        let midnight = chrono::NaiveTime::from_hms_opt(23, 59, 59).unwrap();
+        let hours_to_midnight = (midnight - prev_end).num_seconds() as f64 / 3600.0 + 1.0 / 3600.0;
+        let midnight_start = chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap();
+        let hours_from_midnight = (next_start - midnight_start).num_seconds() as f64 / 3600.0;
+        hours_to_midnight + hours_from_midnight
+    }
 }
 
 struct TempAssignment {
@@ -160,12 +171,12 @@ pub async fn run_auto_schedule(
             .sum()
     };
 
-    let get_last_shift_end = |emp_id: Uuid, date: NaiveDate, ass_list: &[TempAssignment]| -> Option<NaiveTime> {
+    let get_last_shift_times = |emp_id: Uuid, date: NaiveDate, ass_list: &[TempAssignment]| -> Option<(NaiveTime, NaiveTime)> {
         ass_list
             .iter()
             .filter(|a| a.employee_id == emp_id && a.date == date)
-            .map(|a| a.end_time)
-            .max()
+            .map(|a| (a.start_time, a.end_time))
+            .last()
     };
 
     let is_assigned = |emp_id: Uuid, date: NaiveDate, ass_list: &[TempAssignment]| -> bool {
@@ -250,8 +261,8 @@ pub async fn run_auto_schedule(
                 }
 
                 // Check rest period (11 hours)
-                if let Some(prev_end) = get_last_shift_end(emp.id, current_date.pred_opt().unwrap(), &assignments) {
-                    let rest = calculate_rest(prev_end, st.start_time);
+                if let Some((prev_start, prev_end)) = get_last_shift_times(emp.id, current_date.pred_opt().unwrap(), &assignments) {
+                    let rest = calculate_rest(prev_start, prev_end, st.start_time);
                     if rest < min_rest_hours {
                         continue;
                     }

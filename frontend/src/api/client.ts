@@ -206,10 +206,25 @@ const employees = {
   delete: (id: string) =>
     request<Employee>(`/employees/${id}`, { method: 'DELETE' }),
 
-  createUser: (id: string, password?: string) =>
+  createUser: (id: string, password?: string, role?: string) =>
     request<any>(`/employees/${id}/create-user`, {
       method: 'POST',
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, role }),
+    }),
+
+  getUserAccount: (id: string) =>
+    request<{
+      has_account: boolean;
+      user_id?: string;
+      email?: string;
+      role?: string;
+      is_active?: boolean;
+    }>(`/employees/${id}/user-account`),
+
+  updateUserAccount: (id: string, data: { role?: string; is_active?: boolean; password?: string }) =>
+    request<any>(`/employees/${id}/user-account`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
 };
 

@@ -245,7 +245,7 @@ pub async fn claim_shift_swap(
     })
     .await?;
 
-    let updated = execute_with_tenant(&state.db, &tenant_id, |txn| {
+    let (updated, manager_emails, req_name, backup_name, shift_date, shift_name) = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
             let swap = shift_swap::Entity::find()
                 .filter(shift_swap::Column::Id.eq(swap_id))
@@ -268,16 +268,77 @@ pub async fn claim_shift_swap(
                 }
             }
 
-            let mut active: shift_swap::ActiveModel = swap.into();
+            let mut active: shift_swap::ActiveModel = swap.clone().into();
             active.backup_employee_id = Set(Some(claiming_employee_id));
             active.status = Set("proposed".to_string());
             active.updated_at = Set(chrono::Utc::now().into());
 
             let res = active.update(txn).await?;
-            Ok(res)
+
+            // Fetch details for email
+            let req_emp = employee::Entity::find()
+                .filter(employee::Column::Id.eq(swap.requesting_employee_id))
+                .filter(employee::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?;
+            let req_name = req_emp
+                .map(|e| format!("{} {}", e.first_name.unwrap_or_default(), e.last_name.unwrap_or_default()).trim().to_string())
+                .unwrap_or_else(|| "Mitarbeiter".to_string());
+
+            let backup_emp = employee::Entity::find()
+                .filter(employee::Column::Id.eq(claiming_employee_id))
+                .filter(employee::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?;
+            let backup_name = backup_emp
+                .map(|e| format!("{} {}", e.first_name.unwrap_or_default(), e.last_name.unwrap_or_default()).trim().to_string())
+                .unwrap_or_else(|| "Kollege".to_string());
+
+            let assign = shift_assignment::Entity::find()
+                .filter(shift_assignment::Column::Id.eq(swap.assignment_id))
+                .filter(shift_assignment::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?;
+            let date_str = assign.as_ref().map(|a| a.assignment_date.format("%d.%m.%Y").to_string()).unwrap_or_default();
+
+            let st_name = if let Some(a) = &assign {
+                shift_type::Entity::find()
+                    .filter(shift_type::Column::Id.eq(a.shift_type_id))
+                    .filter(shift_type::Column::TenantId.eq(tenant_id))
+                    .one(txn)
+                    .await?
+                    .map(|st| st.name)
+                    .unwrap_or_else(|| "Schicht".to_string())
+            } else {
+                "Schicht".to_string()
+            };
+
+            let managers = user::Entity::find()
+                .filter(user::Column::TenantId.eq(tenant_id))
+                .filter(user::Column::IsActive.eq(true))
+                .all(txn)
+                .await?;
+
+            let manager_emails: Vec<String> = managers
+                .into_iter()
+                .filter(|u| u.role == "admin" || u.role == "planner" || u.role == "super_admin")
+                .map(|u| u.email)
+                .collect();
+
+            Ok((res, manager_emails, req_name, backup_name, date_str, st_name))
         })
     })
     .await?;
+
+    // Send email notification to managers
+    crate::services::email_service::notify_swap_proposed(
+        state.config.clone(),
+        manager_emails,
+        req_name,
+        backup_name,
+        shift_date,
+        shift_name,
+    );
 
     Ok(Json(serde_json::to_value(updated).unwrap()))
 }
@@ -295,7 +356,7 @@ pub async fn approve_shift_swap(
         _ => return Err(AppError::Forbidden("Manager access required".to_string())),
     }
 
-    let updated_assignment = execute_with_tenant(&state.db, &tenant_id, |txn| {
+    let (updated_assignment, recipient_emails, shift_date, shift_name) = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
             let swap = shift_swap::Entity::find()
                 .filter(shift_swap::Column::Id.eq(swap_id))
@@ -346,20 +407,61 @@ pub async fn approve_shift_swap(
                 return Err(AppError::BadRequest(format!("Tausch verletzt Dienstplanregeln: {}", msg)));
             }
 
-            let mut active_assign: shift_assignment::ActiveModel = assignment.into();
+            let mut active_assign: shift_assignment::ActiveModel = assignment.clone().into();
             active_assign.employee_id = Set(backup_employee_id);
             active_assign.updated_at = Set(chrono::Utc::now().into());
             let updated_assign = active_assign.update(txn).await?;
 
-            let mut active_swap: shift_swap::ActiveModel = swap.into();
+            let mut active_swap: shift_swap::ActiveModel = swap.clone().into();
             active_swap.status = Set("approved".to_string());
             active_swap.updated_at = Set(chrono::Utc::now().into());
             active_swap.update(txn).await?;
 
-            Ok(updated_assign)
+            // Fetch emails
+            let mut recipient_emails = Vec::new();
+            if let Some(req_emp) = employee::Entity::find()
+                .filter(employee::Column::Id.eq(swap.requesting_employee_id))
+                .filter(employee::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+            {
+                if let Some(em) = req_emp.email.filter(|e| !e.trim().is_empty()) {
+                    recipient_emails.push(em);
+                }
+            }
+            if let Some(back_emp) = employee::Entity::find()
+                .filter(employee::Column::Id.eq(backup_employee_id))
+                .filter(employee::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+            {
+                if let Some(em) = back_emp.email.filter(|e| !e.trim().is_empty()) {
+                    recipient_emails.push(em);
+                }
+            }
+
+            let date_str = assignment.assignment_date.format("%d.%m.%Y").to_string();
+            let st_name = shift_type::Entity::find()
+                .filter(shift_type::Column::Id.eq(assignment.shift_type_id))
+                .filter(shift_type::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .map(|st| st.name)
+                .unwrap_or_else(|| "Schicht".to_string());
+
+            Ok((updated_assign, recipient_emails, date_str, st_name))
         })
     })
     .await?;
+
+    // Send email notification to employees
+    crate::services::email_service::notify_swap_decided(
+        state.config.clone(),
+        recipient_emails,
+        "approved".to_string(),
+        shift_date,
+        shift_name,
+    );
 
     Ok(Json(serde_json::to_value(updated_assignment).unwrap()))
 }
@@ -377,7 +479,7 @@ pub async fn reject_shift_swap(
         _ => return Err(AppError::Forbidden("Manager access required".to_string())),
     }
 
-    let updated = execute_with_tenant(&state.db, &tenant_id, |txn| {
+    let (updated, recipient_emails, shift_date, shift_name) = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
             let swap = shift_swap::Entity::find()
                 .filter(shift_swap::Column::Id.eq(swap_id))
@@ -390,16 +492,72 @@ pub async fn reject_shift_swap(
                 return Err(AppError::BadRequest("Der Tauschantrag kann nur abgelehnt werden, wenn er vorgeschlagen wurde.".to_string()));
             }
 
-            let mut active: shift_swap::ActiveModel = swap.into();
+            let backup_employee_id = swap.backup_employee_id;
+
+            let mut active: shift_swap::ActiveModel = swap.clone().into();
             active.backup_employee_id = Set(None);
             active.status = Set("open".to_string());
             active.updated_at = Set(chrono::Utc::now().into());
 
             let res = active.update(txn).await?;
-            Ok(res)
+
+            // Fetch emails
+            let mut recipient_emails = Vec::new();
+            if let Some(req_emp) = employee::Entity::find()
+                .filter(employee::Column::Id.eq(swap.requesting_employee_id))
+                .filter(employee::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+            {
+                if let Some(em) = req_emp.email.filter(|e| !e.trim().is_empty()) {
+                    recipient_emails.push(em);
+                }
+            }
+            if let Some(b_id) = backup_employee_id {
+                if let Some(back_emp) = employee::Entity::find()
+                    .filter(employee::Column::Id.eq(b_id))
+                    .filter(employee::Column::TenantId.eq(tenant_id))
+                    .one(txn)
+                    .await?
+                {
+                    if let Some(em) = back_emp.email.filter(|e| !e.trim().is_empty()) {
+                        recipient_emails.push(em);
+                    }
+                }
+            }
+
+            let assign = shift_assignment::Entity::find()
+                .filter(shift_assignment::Column::Id.eq(swap.assignment_id))
+                .filter(shift_assignment::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?;
+            let date_str = assign.as_ref().map(|a| a.assignment_date.format("%d.%m.%Y").to_string()).unwrap_or_default();
+
+            let st_name = if let Some(a) = &assign {
+                shift_type::Entity::find()
+                    .filter(shift_type::Column::Id.eq(a.shift_type_id))
+                    .filter(shift_type::Column::TenantId.eq(tenant_id))
+                    .one(txn)
+                    .await?
+                    .map(|st| st.name)
+                    .unwrap_or_else(|| "Schicht".to_string())
+            } else {
+                "Schicht".to_string()
+            };
+
+            Ok((res, recipient_emails, date_str, st_name))
         })
     })
     .await?;
+
+    // Send email notification to employees
+    crate::services::email_service::notify_swap_decided(
+        state.config.clone(),
+        recipient_emails,
+        "rejected".to_string(),
+        shift_date,
+        shift_name,
+    );
 
     Ok(Json(serde_json::to_value(updated).unwrap()))
 }

@@ -1,5 +1,6 @@
 //! Calendar service — generates RFC 5545 ICS calendar exports and manages
 //! subscription tokens for long-lived calendar feed URLs.
+#![allow(dead_code)]
 
 use chrono::Duration;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};

@@ -77,6 +77,13 @@ fn require_manager(auth: &AuthUser) -> Result<(), AppError> {
     }
 }
 
+fn require_admin(auth: &AuthUser) -> Result<(), AppError> {
+    match auth.role.as_str() {
+        "super_admin" | "admin" => Ok(()),
+        _ => Err(AppError::Forbidden("Administrator access required".to_string())),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -87,6 +94,7 @@ pub fn router() -> Router<AppState> {
         .route("/me", get(get_current_employee))
         .route("/{id}", get(get_employee).put(update_employee).delete(delete_employee))
         .route("/{id}/create-user", post(create_employee_user))
+        .route("/{id}/user-account", get(get_employee_user_account).put(update_employee_user_account))
         
         .route("/{employee_id}/blocked-days", get(blocked_days::list_blocked_days).post(blocked_days::create_blocked_day))
         .route("/{employee_id}/blocked-days/", get(blocked_days::list_blocked_days).post(blocked_days::create_blocked_day))
@@ -424,6 +432,75 @@ async fn get_current_employee(
 #[derive(Deserialize)]
 pub struct CreateUserAccountRequest {
     pub password: Option<String>,
+    pub role: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct EmployeeUserAccountResponse {
+    pub has_account: bool,
+    pub user_id: Option<Uuid>,
+    pub email: Option<String>,
+    pub role: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+/// GET /:id/user-account – get the linked user account info for an employee.
+async fn get_employee_user_account(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Result<Json<EmployeeUserAccountResponse>, AppError> {
+    require_manager(&auth)?;
+    let tenant_id = auth.tenant_id;
+
+    let account_info = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        Box::pin(async move {
+            let emp = Employee::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))?;
+
+            let emp_email = emp.email.clone().unwrap_or_default();
+            if emp_email.trim().is_empty() {
+                return Ok(EmployeeUserAccountResponse {
+                    has_account: false,
+                    user_id: None,
+                    email: None,
+                    role: None,
+                    is_active: None,
+                });
+            }
+
+            let u = user::Entity::find()
+                .filter(user::Column::TenantId.eq(tenant_id))
+                .filter(user::Column::Email.eq(&emp_email))
+                .one(txn)
+                .await?;
+
+            if let Some(user_model) = u {
+                Ok(EmployeeUserAccountResponse {
+                    has_account: true,
+                    user_id: Some(user_model.id),
+                    email: Some(user_model.email),
+                    role: Some(user_model.role),
+                    is_active: Some(user_model.is_active),
+                })
+            } else {
+                Ok(EmployeeUserAccountResponse {
+                    has_account: false,
+                    user_id: None,
+                    email: Some(emp_email),
+                    role: None,
+                    is_active: None,
+                })
+            }
+        })
+    })
+    .await?;
+
+    Ok(Json(account_info))
 }
 
 /// POST /:id/create-user – enable login credentials for an employee (creates a user account).
@@ -438,6 +515,11 @@ async fn create_employee_user(
     let password = payload.password.unwrap_or_else(|| "start123".to_string());
     if password.len() < 6 {
         return Err(AppError::BadRequest("Das Passwort muss mindestens 6 Zeichen lang sein.".to_string()));
+    }
+
+    let role = payload.role.unwrap_or_else(|| "viewer".to_string());
+    if !["viewer", "planner", "admin"].contains(&role.as_str()) {
+        return Err(AppError::BadRequest("Ungültige Rolle. Erlaubt: viewer, planner, admin".to_string()));
     }
 
     use argon2::{
@@ -455,8 +537,11 @@ async fn create_employee_user(
 
     let now = chrono::Utc::now().fixed_offset();
     let tenant_id = auth.tenant_id;
+    let role_clone = role.clone();
+    let pass_for_mail = password.clone();
 
-    let new_user_model = execute_with_tenant(&state.db, &tenant_id, |txn| {
+    let (new_user_model, emp_name, emp_email) = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        let role = role_clone;
         Box::pin(async move {
             let emp = Employee::find()
                 .filter(Column::Id.eq(id))
@@ -480,24 +565,154 @@ async fn create_employee_user(
                 return Err(AppError::Conflict("Für diese E-Mail-Adresse existiert bereits ein Benutzerkonto.".to_string()));
             }
 
+            let first = emp.first_name.clone().unwrap_or_default();
+            let last = emp.last_name.clone().unwrap_or_default();
+            let full_name = format!("{} {}", first, last).trim().to_string();
+
             let new_u = user::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tenant_id: Set(tenant_id),
-                email: Set(emp_email),
+                email: Set(emp_email.clone()),
                 password_hash: Set(password_hash),
-                first_name: Set(emp.first_name.unwrap_or_default()),
-                last_name: Set(emp.last_name.unwrap_or_default()),
-                role: Set("viewer".to_string()),
+                first_name: Set(first),
+                last_name: Set(last),
+                role: Set(role),
                 is_active: Set(true),
                 created_at: Set(now),
                 updated_at: Set(now),
             };
 
             let inserted = new_u.insert(txn).await?;
-            Ok(inserted)
+            Ok((inserted, full_name, emp_email))
         })
     })
     .await?;
 
+    // Send welcome email notification asynchronously
+    crate::services::email_service::notify_welcome_user(
+        state.config.clone(),
+        emp_email,
+        emp_name,
+        role,
+        Some(pass_for_mail),
+    );
+
     Ok(Json(serde_json::to_value(new_user_model).unwrap()))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateUserAccountRequest {
+    pub role: Option<String>,
+    pub is_active: Option<bool>,
+    pub password: Option<String>,
+}
+
+/// PUT /:id/user-account – update linked user account role, active status, or password.
+async fn update_employee_user_account(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(id): Path<Uuid>,
+    Json(payload): Json<UpdateUserAccountRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_admin(&auth)?;
+    let tenant_id = auth.tenant_id;
+    let now = chrono::Utc::now().fixed_offset();
+
+    let (updated_user, role_changed, emp_email, emp_name, new_role) = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        let payload = payload;
+        Box::pin(async move {
+            let emp = Employee::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))?;
+
+            let emp_email = emp.email.clone().ok_or_else(|| AppError::BadRequest("Mitarbeiter hat keine E-Mail-Adresse hinterlegt.".to_string()))?;
+            let first = emp.first_name.clone().unwrap_or_default();
+            let last = emp.last_name.clone().unwrap_or_default();
+            let full_name = format!("{} {}", first, last).trim().to_string();
+
+            let existing_user = user::Entity::find()
+                .filter(user::Column::TenantId.eq(tenant_id))
+                .filter(user::Column::Email.eq(&emp_email))
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Zu diesem Mitarbeiter existiert kein Benutzerkonto.".to_string()))?;
+
+            let mut active_u: user::ActiveModel = existing_user.clone().into();
+            let mut role_changed = false;
+            let mut target_role = existing_user.role.clone();
+
+            if let Some(r) = payload.role {
+                if !["viewer", "planner", "admin"].contains(&r.as_str()) {
+                    return Err(AppError::BadRequest("Ungültige Rolle. Erlaubt: viewer, planner, admin".to_string()));
+                }
+
+                // If demoting an admin, ensure there is at least one other active admin
+                if existing_user.role == "admin" && r != "admin" {
+                    let admin_count = user::Entity::find()
+                        .filter(user::Column::TenantId.eq(tenant_id))
+                        .filter(user::Column::Role.eq("admin"))
+                        .filter(user::Column::IsActive.eq(true))
+                        .count(txn)
+                        .await?;
+                    if admin_count <= 1 {
+                        return Err(AppError::BadRequest("Der einzige Administrator des Mandanten kann nicht herabgestuft werden.".to_string()));
+                    }
+                }
+
+                if existing_user.role != r {
+                    role_changed = true;
+                    target_role = r.clone();
+                    active_u.role = Set(r);
+                }
+            }
+
+            if let Some(act) = payload.is_active {
+                if existing_user.role == "admin" && !act {
+                    let admin_count = user::Entity::find()
+                        .filter(user::Column::TenantId.eq(tenant_id))
+                        .filter(user::Column::Role.eq("admin"))
+                        .filter(user::Column::IsActive.eq(true))
+                        .count(txn)
+                        .await?;
+                    if admin_count <= 1 {
+                        return Err(AppError::BadRequest("Der einzige Administrator des Mandanten kann nicht deaktiviert werden.".to_string()));
+                    }
+                }
+                active_u.is_active = Set(act);
+            }
+
+            if let Some(new_pw) = payload.password.filter(|p| !p.trim().is_empty()) {
+                if new_pw.len() < 6 {
+                    return Err(AppError::BadRequest("Das Passwort muss mindestens 6 Zeichen lang sein.".to_string()));
+                }
+                use argon2::{password_hash::{rand_core::OsRng, SaltString}, Argon2, PasswordHasher};
+                let salt = SaltString::generate(&mut OsRng);
+                let argon2 = Argon2::default();
+                let password_hash = argon2
+                    .hash_password(new_pw.as_bytes(), &salt)
+                    .map_err(|e| AppError::InternalError(format!("Passworthash fehlgeschlagen: {e}")))?
+                    .to_string();
+                active_u.password_hash = Set(password_hash);
+            }
+
+            active_u.updated_at = Set(now);
+            let updated = active_u.update(txn).await?;
+            Ok((updated, role_changed, emp_email, full_name, target_role))
+        })
+    })
+    .await?;
+
+    if role_changed {
+        crate::services::email_service::notify_role_updated(
+            state.config.clone(),
+            emp_email,
+            emp_name,
+            new_role,
+        );
+    }
+
+    Ok(Json(serde_json::to_value(updated_user).unwrap()))
 }

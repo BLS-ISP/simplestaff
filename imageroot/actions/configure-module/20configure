@@ -40,17 +40,31 @@ try:
     # 3. Extract fields
     domain_name = request.get('domain_name')
     super_admin_email = request.get('super_admin_email')
-    super_admin_password = request.get('super_admin_password')
+    super_admin_password = request.get('super_admin_password') or os.environ.get('SUPER_ADMIN_PASSWORD', '')
     lets_encrypt = request.get('lets_encrypt', True)
     http2https = request.get('http2https', True)
 
-    if not domain_name or not super_admin_email or not super_admin_password:
-        log_error("Missing required configuration fields in request.")
+    smtp_enabled = request.get('smtp_enabled', False)
+    smtp_host = request.get('smtp_host', '')
+    smtp_port = request.get('smtp_port', 587)
+    smtp_user = request.get('smtp_user', '')
+    smtp_password = request.get('smtp_password')
+    if smtp_password is None:
+        smtp_password = os.environ.get('SMTP_PASSWORD', '')
+    smtp_from = request.get('smtp_from', '')
+
+    if not domain_name or not super_admin_email:
+        log_error("Missing required configuration fields: domain_name and super_admin_email are required.")
+        sys.exit(1)
+
+    if not super_admin_password:
+        log_error("Super admin password is required for initial setup.")
         sys.exit(1)
 
     # Ensure booleans
     lets_encrypt = bool(lets_encrypt)
     http2https = bool(http2https)
+    smtp_enabled = bool(smtp_enabled)
 
     # 4. Generate/Retrieve secrets
     db_password = os.environ.get('DATABASE_PASSWORD', '') or secrets.token_hex(16)
@@ -65,6 +79,13 @@ try:
     agent.set_env('JWT_SECRET', jwt_secret)
     agent.set_env('LETS_ENCRYPT', str(lets_encrypt))
     agent.set_env('HTTP2HTTPS', str(http2https))
+    agent.set_env('SMTP_ENABLED', str(smtp_enabled))
+    agent.set_env('SMTP_HOST', str(smtp_host))
+    agent.set_env('SMTP_PORT', str(smtp_port))
+    agent.set_env('SMTP_USER', str(smtp_user))
+    agent.set_env('SMTP_PASSWORD', str(smtp_password))
+    agent.set_env('SMTP_FROM', str(smtp_from))
+    agent.set_env('APP_BASE_URL', f"https://{domain_name}")
 
     # 6. Ensure state directories
     os.makedirs(os.path.expanduser('~/.config/state/postgres_data'), exist_ok=True)

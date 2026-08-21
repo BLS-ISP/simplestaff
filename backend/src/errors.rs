@@ -10,6 +10,7 @@ use serde::Serialize;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WarningSeverity {
+    #[allow(dead_code)]
     Info,
     Warning,
     Critical,
@@ -52,6 +53,7 @@ pub enum AppError {
     #[error("Database error: {0}")]
     DatabaseError(#[from] sea_orm::DbErr),
 
+    #[allow(dead_code)]
     #[error("Validation warnings")]
     ValidationWarnings(Vec<ValidationWarning>),
 }

@@ -161,6 +161,8 @@ pub async fn create_assignment(
     auth_user: AuthUser,
     Json(body): Json<CreateAssignment>,
 ) -> Result<Json<shift_assignment::Model>, AppError> {
+    require_manager(&auth_user)?;
+
     let tenant_id = auth_user.tenant_id;
     let now = chrono::Utc::now().into();
 
@@ -196,6 +198,8 @@ pub async fn update_assignment(
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateAssignment>,
 ) -> Result<Json<shift_assignment::Model>, AppError> {
+    require_manager(&auth_user)?;
+
     let tenant_id = auth_user.tenant_id;
 
     let model = execute_with_tenant(&state.db, &tenant_id, |txn| {
@@ -250,6 +254,8 @@ pub async fn delete_assignment(
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    require_manager(&auth_user)?;
+
     let tenant_id = auth_user.tenant_id;
 
     execute_with_tenant(&state.db, &tenant_id, |txn| {

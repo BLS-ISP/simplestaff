@@ -4,6 +4,13 @@ import { api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import type { Employee, ShiftSwap, ShiftAssignment, ShiftType } from '../types';
 
+function toLocalISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export default function ShiftSwapsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -56,10 +63,10 @@ export default function ShiftSwapsPage() {
         setMyEmployee(me);
 
         // Load upcoming assignments for this employee (next 30 days)
-        const today = new Date().toISOString().split('T')[0];
+        const today = toLocalISODate(new Date());
         const nextMonth = new Date();
         nextMonth.setDate(nextMonth.getDate() + 30);
-        const end = nextMonth.toISOString().split('T')[0];
+        const end = toLocalISODate(nextMonth);
 
         const assigns = await api.assignments.list({ start_date: today, end_date: end });
         setMyUpcomingAssignments(assigns.filter(a => a.employee_id === me.id));

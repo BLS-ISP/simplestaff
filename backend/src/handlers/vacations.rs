@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -13,7 +13,25 @@ use crate::middleware::auth::AuthUser;
 use crate::middleware::tenant::execute_with_tenant;
 use crate::models::employee;
 use crate::models::employee_vacation::{self, ActiveModel, Column, Entity as Vacation};
+use crate::models::user;
 use crate::AppState;
+
+fn count_vacation_days(start_date: NaiveDate, end_date: NaiveDate) -> f32 {
+    let mut count = 0.0;
+    let mut curr = start_date;
+    while curr <= end_date {
+        let wd = curr.weekday().number_from_monday();
+        if wd <= 5 {
+            count += 1.0;
+        }
+        if let Some(next) = curr.succ_opt() {
+            curr = next;
+        } else {
+            break;
+        }
+    }
+    count
+}
 
 // ---------------------------------------------------------------------------
 // DTOs
@@ -126,18 +144,20 @@ pub async fn create_vacation(
 
     let now = chrono::Utc::now().into();
     let tenant_id = auth.tenant_id;
+    let notes_for_mail = body.notes.clone();
 
-    let vacation = execute_with_tenant(&state.db, &tenant_id, |txn| {
+    let (vacation, manager_emails, emp_name) = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
-            let emp_exists = employee::Entity::find()
+            let emp = employee::Entity::find()
                 .filter(employee::Column::Id.eq(employee_id))
                 .filter(employee::Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
-                .is_some();
-            if !emp_exists {
-                return Err(AppError::NotFound("Employee not found".to_string()));
-            }
+                .ok_or_else(|| AppError::NotFound("Employee not found".to_string()))?;
+
+            let first = emp.first_name.clone().unwrap_or_default();
+            let last = emp.last_name.clone().unwrap_or_default();
+            let full_name = format!("{} {}", first, last).trim().to_string();
 
             let model = ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -151,10 +171,35 @@ pub async fn create_vacation(
                 updated_at: Set(now),
             };
 
-            model.insert(txn).await.map_err(AppError::from)
+            let inserted = model.insert(txn).await?;
+
+            // Fetch manager/admin emails for notification
+            let managers = user::Entity::find()
+                .filter(user::Column::TenantId.eq(tenant_id))
+                .filter(user::Column::IsActive.eq(true))
+                .all(txn)
+                .await?;
+
+            let manager_emails: Vec<String> = managers
+                .into_iter()
+                .filter(|u| u.role == "admin" || u.role == "planner" || u.role == "super_admin")
+                .map(|u| u.email)
+                .collect();
+
+            Ok((inserted, manager_emails, full_name))
         })
     })
     .await?;
+
+    // Send email notification to managers
+    crate::services::email_service::notify_vacation_requested(
+        state.config.clone(),
+        manager_emails,
+        emp_name,
+        vacation.start_date.format("%d.%m.%Y").to_string(),
+        vacation.end_date.format("%d.%m.%Y").to_string(),
+        notes_for_mail,
+    );
 
     Ok(Json(VacationResponse::from(vacation)))
 }
@@ -167,7 +212,7 @@ pub async fn approve_vacation(
 ) -> Result<Json<VacationResponse>, AppError> {
     require_manager(&auth)?;
 
-    let vacation = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
+    let (vacation, emp_email, emp_name) = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
             let vacation = Vacation::find()
                 .filter(Column::Id.eq(vacation_id))
@@ -177,14 +222,53 @@ pub async fn approve_vacation(
                 .await?
                 .ok_or_else(|| AppError::NotFound("Vacation not found".to_string()))?;
 
+            let previous_status = vacation.status.clone();
+
             let mut active: ActiveModel = vacation.into();
             active.status = Set("approved".to_string());
             active.updated_at = Set(chrono::Utc::now().into());
+            let updated_vacation = active.update(txn).await?;
 
-            active.update(txn).await.map_err(AppError::from)
+            let mut emp_email = String::new();
+            let mut emp_name = String::new();
+
+            if let Some(emp) = employee::Entity::find()
+                .filter(employee::Column::Id.eq(employee_id))
+                .filter(employee::Column::TenantId.eq(auth.tenant_id))
+                .one(txn)
+                .await?
+            {
+                emp_email = emp.email.clone().unwrap_or_default();
+                let first = emp.first_name.clone().unwrap_or_default();
+                let last = emp.last_name.clone().unwrap_or_default();
+                emp_name = format!("{} {}", first, last).trim().to_string();
+
+                // If it wasn't already approved, deduct the vacation days from employee balance
+                if previous_status != "approved" {
+                    let days = count_vacation_days(updated_vacation.start_date, updated_vacation.end_date);
+                    let mut active_emp: employee::ActiveModel = emp.into();
+                    let new_remaining = (active_emp.vacation_days_remaining.unwrap() - days).max(0.0);
+                    active_emp.vacation_days_remaining = Set(new_remaining);
+                    active_emp.updated_at = Set(chrono::Utc::now().into());
+                    active_emp.update(txn).await?;
+                }
+            }
+
+            Ok((updated_vacation, emp_email, emp_name))
         })
     })
     .await?;
+
+    if !emp_email.trim().is_empty() {
+        crate::services::email_service::notify_vacation_decided(
+            state.config.clone(),
+            emp_email,
+            emp_name,
+            "approved".to_string(),
+            vacation.start_date.format("%d.%m.%Y").to_string(),
+            vacation.end_date.format("%d.%m.%Y").to_string(),
+        );
+    }
 
     Ok(Json(VacationResponse::from(vacation)))
 }
@@ -197,7 +281,7 @@ pub async fn reject_vacation(
 ) -> Result<Json<VacationResponse>, AppError> {
     require_manager(&auth)?;
 
-    let vacation = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
+    let (vacation, emp_email, emp_name) = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
             let vacation = Vacation::find()
                 .filter(Column::Id.eq(vacation_id))
@@ -207,14 +291,53 @@ pub async fn reject_vacation(
                 .await?
                 .ok_or_else(|| AppError::NotFound("Vacation not found".to_string()))?;
 
+            let previous_status = vacation.status.clone();
+
             let mut active: ActiveModel = vacation.into();
             active.status = Set("rejected".to_string());
             active.updated_at = Set(chrono::Utc::now().into());
+            let updated_vacation = active.update(txn).await?;
 
-            active.update(txn).await.map_err(AppError::from)
+            let mut emp_email = String::new();
+            let mut emp_name = String::new();
+
+            if let Some(emp) = employee::Entity::find()
+                .filter(employee::Column::Id.eq(employee_id))
+                .filter(employee::Column::TenantId.eq(auth.tenant_id))
+                .one(txn)
+                .await?
+            {
+                emp_email = emp.email.clone().unwrap_or_default();
+                let first = emp.first_name.clone().unwrap_or_default();
+                let last = emp.last_name.clone().unwrap_or_default();
+                emp_name = format!("{} {}", first, last).trim().to_string();
+
+                // If it was previously approved, refund the vacation days back to the employee balance
+                if previous_status == "approved" {
+                    let days = count_vacation_days(updated_vacation.start_date, updated_vacation.end_date);
+                    let mut active_emp: employee::ActiveModel = emp.into();
+                    let new_remaining = active_emp.vacation_days_remaining.unwrap() + days;
+                    active_emp.vacation_days_remaining = Set(new_remaining);
+                    active_emp.updated_at = Set(chrono::Utc::now().into());
+                    active_emp.update(txn).await?;
+                }
+            }
+
+            Ok((updated_vacation, emp_email, emp_name))
         })
     })
     .await?;
+
+    if !emp_email.trim().is_empty() {
+        crate::services::email_service::notify_vacation_decided(
+            state.config.clone(),
+            emp_email,
+            emp_name,
+            "rejected".to_string(),
+            vacation.start_date.format("%d.%m.%Y").to_string(),
+            vacation.end_date.format("%d.%m.%Y").to_string(),
+        );
+    }
 
     Ok(Json(VacationResponse::from(vacation)))
 }

@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+
+#
+# SimpleStaff - NS8 get-status action
+# Returns status, services, images, and volumes information as JSON to stdout.
+#
+
+import os
+import json
+import sys
+import subprocess
+import traceback
+
+def log_error(msg):
+    print(f"ERROR: {msg}", file=sys.stderr)
+
+try:
+    import agent
+except Exception as e:
+    log_error(f"Failed to import NS8 agent: {e}")
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)
+
+try:
+    module_id = os.environ.get('MODULE_ID', '')
+    node_id = os.environ.get('NODE_ID', '1')
+
+    # Get service status via systemctl --user
+    services = []
+    try:
+        res = subprocess.run(
+            ['systemctl', '--user', 'is-active', 'simplestaff.service'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        status_str = res.stdout.strip()
+        is_active = (status_str == 'active')
+        is_failed = (status_str == 'failed')
+        services.append({
+            "name": "simplestaff",
+            "status": "running" if is_active else ("failed" if is_failed else "inactive"),
+            "active": is_active,
+            "failed": is_failed
+        })
+    except Exception:
+        services.append({
+            "name": "simplestaff",
+            "status": "unknown",
+            "active": False,
+            "failed": False
+        })
+
+    # Images
+    images = [
+        {
+            "name": os.environ.get('SIMPLESTAFF_BACKEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-backend:latest'),
+            "size": "-",
+            "created": "-"
+        },
+        {
+            "name": os.environ.get('SIMPLESTAFF_FRONTEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-frontend:latest'),
+            "size": "-",
+            "created": "-"
+        },
+        {
+            "name": os.environ.get('POSTGRES_IMAGE', 'docker.io/library/postgres:15-alpine'),
+            "size": "-",
+            "created": "-"
+        }
+    ]
+
+    # Volumes
+    volumes = [
+        {
+            "name": "postgres_data",
+            "mount": os.path.expanduser('~/.config/state/postgres_data'),
+            "created": "-"
+        }
+    ]
+
+    status = {
+        "instance": module_id,
+        "node": node_id,
+        "node_ui_name": f"node-{node_id}",
+        "services": services,
+        "images": images,
+        "volumes": volumes
+    }
+
+    json.dump(status, fp=sys.stdout)
+    sys.stdout.flush()
+
+except Exception as e:
+    log_error(f"Unexpected error during get-status: {e}")
+    traceback.print_exc(file=sys.stderr)
+    sys.exit(1)

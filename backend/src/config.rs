@@ -11,6 +11,13 @@ pub struct Config {
     pub super_admin_password: String,
     pub super_admin_tenant_name: String,
     pub super_admin_tenant_slug: String,
+    pub smtp_host: Option<String>,
+    pub smtp_port: Option<u16>,
+    pub smtp_user: Option<String>,
+    pub smtp_password: Option<String>,
+    pub smtp_from: Option<String>,
+    pub smtp_enabled: bool,
+    pub app_base_url: String,
 }
 
 impl Config {
@@ -21,6 +28,17 @@ impl Config {
     /// `SERVER_HOST` (0.0.0.0) and `SERVER_PORT` (8080).
     pub fn from_env() -> Self {
         dotenvy::dotenv().ok();
+
+        let smtp_host = env::var("SMTP_HOST").ok().filter(|s| !s.trim().is_empty());
+        let smtp_port = env::var("SMTP_PORT").ok().and_then(|p| p.parse::<u16>().ok());
+        let smtp_user = env::var("SMTP_USER").ok().filter(|s| !s.trim().is_empty());
+        let smtp_password = env::var("SMTP_PASSWORD").ok().filter(|s| !s.trim().is_empty());
+        let smtp_from = env::var("SMTP_FROM").ok().filter(|s| !s.trim().is_empty());
+        let smtp_enabled = env::var("SMTP_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(smtp_host.is_some());
+        let app_base_url = env::var("APP_BASE_URL")
+            .unwrap_or_else(|_| "https://time.bls-isp.net".to_string());
 
         Self {
             database_url: env::var("DATABASE_URL")
@@ -41,6 +59,13 @@ impl Config {
                 .expect("SUPER_ADMIN_TENANT_NAME must be set"),
             super_admin_tenant_slug: env::var("SUPER_ADMIN_TENANT_SLUG")
                 .expect("SUPER_ADMIN_TENANT_SLUG must be set"),
+            smtp_host,
+            smtp_port,
+            smtp_user,
+            smtp_password,
+            smtp_from,
+            smtp_enabled,
+            app_base_url,
         }
     }
 }

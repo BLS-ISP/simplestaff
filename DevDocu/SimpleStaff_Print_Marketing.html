@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimpleStaff – Professioneller B2B Marketing- & Produktflyer (DIN A4)</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+
+    /* ==========================================================================
+       CSS VARIABLES & HIGH-CONTRAST THEMES
+       ========================================================================== */
+    :root {
+      /* High-Contrast Print-Optimized Theme */
+      --bg-page: #ffffff;
+      --bg-card: #ffffff;
+      --bg-card-subtle: #f8fafc;
+      --bg-accent-soft: #ede9fe;
+      --border-color: #cbd5e1;
+      --border-dark: #0f172a;
+      --border-accent: #7c3aed;
+      
+      --text-main: #000000;
+      --text-secondary: #0f172a;
+      --text-muted: #334155;
+      
+      --primary: #6d28d9;
+      --primary-dark: #4c1d95;
+      --primary-light: #7c3aed;
+      --primary-gradient: linear-gradient(135deg, #6d28d9 0%, #4338ca 50%, #1d4ed8 100%);
+      --accent-gradient-subtle: #f5f3ff;
+      
+      --success: #047857;
+      --success-bg: #d1fae5;
+      --danger: #b91c1c;
+      --warning: #b45309;
+      
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+      --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.12);
+      --shadow-accent: 0 8px 24px rgba(109, 40, 217, 0.15);
+      
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+    }
+
+    /* Digital Dark Theme */
+    body.theme-dark {
+      --bg-page: #090a10;
+      --bg-card: rgba(20, 22, 33, 0.95);
+      --bg-card-subtle: rgba(30, 33, 48, 0.8);
+      --bg-accent-soft: rgba(139, 92, 246, 0.2);
+      --border-color: rgba(255, 255, 255, 0.15);
+      --border-dark: #ffffff;
+      --border-accent: #a78bfa;
+      
+      --text-main: #ffffff;
+      --text-secondary: #e2e8f0;
+      --text-muted: #cbd5e1;
+      
+      --primary: #a78bfa;
+      --primary-dark: #8b5cf6;
+      --primary-light: #c4b5fd;
+      --primary-gradient: linear-gradient(135deg, #a78bfa 0%, #818cf8 50%, #60a5fa 100%);
+      --accent-gradient-subtle: rgba(139, 92, 246, 0.15);
+      
+      --success: #34d399;
+      --success-bg: rgba(52, 211, 153, 0.15);
+      --danger: #f87171;
+      --warning: #fbbf24;
+      
+      --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.5);
+      --shadow-md: 0 8px 25px rgba(0, 0, 0, 0.7);
+      --shadow-accent: 0 0 30px rgba(139, 92, 246, 0.35);
+    }
+
+    /* ==========================================================================
+       RESET & BASE SETUP
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #1a1a20;
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2rem 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ==========================================================================
+       SCREEN-ONLY TOOLBAR (Hidden in Print)
+       ========================================================================== */
+    .screen-toolbar {
+      position: sticky;
+      top: 1rem;
+      z-index: 1000;
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 50px;
+      padding: 0.6rem 1.3rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.6);
+      margin-bottom: 2rem;
+      color: #ffffff;
+      font-size: 0.85rem;
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 22px;
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .btn-tool {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+      padding: 0.4rem 0.9rem;
+      border-radius: 30px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-tool:hover {
+      background: rgba(255, 255, 255, 0.25);
+      transform: translateY(-1px);
+    }
+
+    .btn-tool.active {
+      background: #7c3aed;
+      border-color: #a78bfa;
+      box-shadow: 0 0 14px rgba(124, 58, 237, 0.6);
+    }
+
+    .btn-print-primary {
+      background: linear-gradient(135deg, #8b5cf6 0%, #4f46e5 100%);
+      color: #ffffff;
+      border: none;
+      padding: 0.45rem 1.15rem;
+      border-radius: 30px;
+      font-weight: 800;
+      font-size: 0.85rem;
+      box-shadow: 0 4px 15px rgba(124, 58, 237, 0.5);
+    }
+    .btn-print-primary:hover {
+      background: linear-gradient(135deg, #7c3aed 0%, #4338ca 100%);
+      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.7);
+      transform: translateY(-1px);
+    }
+
+    /* ==========================================================================
+       DIN A4 PAGE CONTAINER (210mm x 297mm)
+       ========================================================================== */
+    .print-sheet {
+      width: 210mm;
+      height: 297mm;
+      min-height: 297mm;
+      max-height: 297mm;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      padding: 12mm 15mm;
+      margin-bottom: 2.5rem;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+      border-radius: 4px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+      box-sizing: border-box;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    /* Subtle print page indicator line */
+    .print-sheet::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--primary-gradient);
+    }
+
+    /* ==========================================================================
+       PAGE 1 – VORDERSEITE (FRONT / VALUE PROPOSITION)
+       ========================================================================== */
+
+    /* ── HEADER ── */
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 0.65rem;
+      border-bottom: 2px solid var(--border-dark);
+      position: relative;
+      z-index: 10;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      text-decoration: none;
+    }
+
+    .logo-icon-svg {
+      width: 38px;
+      height: 38px;
+      background: #0f172a;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .logo-text {
+      font-family: 'Outfit', sans-serif;
+      font-size: 2rem;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: #000000;
+      line-height: 1;
+    }
+
+    body.theme-dark .logo-text {
+      color: #ffffff;
+    }
+
+    .logo-text span {
+      color: #6d28d9;
+    }
+    body.theme-dark .logo-text span {
+      color: #a78bfa;
+    }
+
+    .header-meta {
+      text-align: right;
+    }
+
+    .badge-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.2rem;
+    }
+
+    .badge-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+
+    .header-domain {
+      font-size: 0.76rem;
+      color: var(--text-secondary);
+      font-weight: 700;
+    }
+    .header-domain strong {
+      color: #6d28d9;
+    }
+
+    /* ── TARGET INDUSTRIES BAR ── */
+    .industry-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-top: 0.55rem;
+      margin-bottom: 0.8rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    .tag-item {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #0f172a;
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      padding: 0.2rem 0.6rem;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    body.theme-dark .tag-item {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* ── HERO BANNER ── */
+    .hero-section {
+      margin-bottom: 0.9rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    .hero-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.85rem;
+      font-weight: 900;
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+      color: #000000;
+      margin-bottom: 0.4rem;
+    }
+    body.theme-dark .hero-title {
+      color: #ffffff;
+    }
+
+    .hero-title .highlight-purple {
+      color: #6d28d9;
+    }
+    body.theme-dark .hero-title .highlight-purple {
+      color: #a78bfa;
+    }
+
+    .hero-sub {
+      font-size: 0.9rem;
+      color: #0f172a;
+      line-height: 1.45;
+      font-weight: 600;
+    }
+    body.theme-dark .hero-sub {
+      color: #e2e8f0;
+    }
+
+    /* ── 4 PILLARS GRID ── */
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.7rem;
+      margin-bottom: 0.9rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    .pillar-box {
+      background: #ffffff;
+      border: 1.5px solid #cbd5e1;
+      border-left: 4px solid #6d28d9;
+      border-radius: var(--radius-md);
+      padding: 0.75rem 0.85rem;
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      box-shadow: var(--shadow-sm);
+    }
+    body.theme-dark .pillar-box {
+      background: rgba(20, 22, 33, 0.95);
+      border-color: rgba(255, 255, 255, 0.18);
+      border-left: 4px solid #a78bfa;
+    }
+
+    .pillar-icon-wrap {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: #6d28d9;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    body.theme-dark .pillar-icon-wrap {
+      background: #a78bfa;
+      color: #0f172a;
+    }
+
+    .pillar-icon-wrap svg {
+      width: 19px;
+      height: 19px;
+      stroke-width: 2.5;
+    }
+
+    .pillar-text h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.92rem;
+      font-weight: 800;
+      color: #000000;
+      margin-bottom: 0.2rem;
+      line-height: 1.2;
+    }
+    body.theme-dark .pillar-text h3 {
+      color: #ffffff;
+    }
+
+    .pillar-text p {
+      font-size: 0.76rem;
+      color: #1e293b;
+      line-height: 1.35;
+      font-weight: 600;
+    }
+    body.theme-dark .pillar-text p {
+      color: #cbd5e1;
+    }
+
+    /* ── UI PRODUCT SHOWCASE ── */
+    .showcase-container {
+      background: #ffffff;
+      border: 1.5px solid #0f172a;
+      border-radius: var(--radius-md);
+      padding: 0.55rem;
+      margin-bottom: 0.9rem;
+      box-shadow: var(--shadow-md);
+      position: relative;
+      z-index: 10;
+    }
+    body.theme-dark .showcase-container {
+      background: rgba(20, 22, 33, 0.95);
+      border-color: #a78bfa;
+    }
+
+    .window-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 0.4rem;
+      margin-bottom: 0.4rem;
+      border-bottom: 1px solid #cbd5e1;
+    }
+
+    .window-dots {
+      display: flex;
+      gap: 5px;
+    }
+    .window-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+
+    .window-url {
+      font-family: monospace;
+      font-size: 0.7rem;
+      color: #0f172a;
+      background: #f1f5f9;
+      padding: 0.15rem 0.7rem;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      font-weight: 700;
+    }
+
+    .showcase-img-wrap {
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      position: relative;
+      border: 1px solid #0f172a;
+      background: #0f1016;
+    }
+
+    .showcase-img-wrap img {
+      width: 100%;
+      height: 185px;
+      object-fit: cover;
+      object-position: 22% 10%;
+      display: block;
+    }
+
+    .floating-pill {
+      position: absolute;
+      background: #0f172a;
+      color: #ffffff;
+      border: 1.5px solid #ffffff;
+      border-radius: 20px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.72rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .pill-top-right {
+      top: 8px;
+      right: 8px;
+      border-left: 4px solid #10b981;
+    }
+
+    .pill-bottom-left {
+      bottom: 8px;
+      left: 8px;
+      border-left: 4px solid #a78bfa;
+    }
+
+    /* ── STATS & ROI METRICS ROW ── */
+    .roi-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.6rem;
+      margin-bottom: 0.85rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    .roi-stat-card {
+      background: #f8fafc;
+      border: 1.5px solid #cbd5e1;
+      border-top: 3px solid #6d28d9;
+      border-radius: var(--radius-md);
+      padding: 0.65rem 0.45rem;
+      text-align: center;
+    }
+    body.theme-dark .roi-stat-card {
+      background: rgba(20, 22, 33, 0.95);
+      border-color: rgba(255, 255, 255, 0.15);
+      border-top: 3px solid #a78bfa;
+    }
+
+    .roi-number {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 900;
+      color: #6d28d9;
+      line-height: 1.1;
+      margin-bottom: 0.15rem;
+    }
+    body.theme-dark .roi-number {
+      color: #a78bfa;
+    }
+
+    .roi-title {
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: #000000;
+      margin-bottom: 0.1rem;
+    }
+    body.theme-dark .roi-title {
+      color: #ffffff;
+    }
+
+    .roi-subtitle {
+      font-size: 0.66rem;
+      color: #1e293b;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+    body.theme-dark .roi-subtitle {
+      color: #cbd5e1;
+    }
+
+    /* ── FOOTER PAGE 1 ── */
+    .sheet-footer {
+      border-top: 1.5px solid var(--border-dark);
+      padding-top: 0.65rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      z-index: 10;
+    }
+
+    .footer-security-text {
+      font-size: 0.72rem;
+      color: #0f172a;
+      line-height: 1.35;
+      font-weight: 600;
+    }
+    body.theme-dark .footer-security-text {
+      color: #e2e8f0;
+    }
+
+    .footer-security-text strong {
+      color: #000000;
+      font-weight: 800;
+    }
+    body.theme-dark .footer-security-text strong {
+      color: #ffffff;
+    }
+
+    .footer-cta-pill {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 800;
+      color: #ffffff;
+      background: #0f172a;
+      padding: 0.4rem 0.95rem;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+    body.theme-dark .footer-cta-pill {
+      background: #7c3aed;
+    }
+
+
+    /* ==========================================================================
+       PAGE 2 – RÜCKSEITE (BACK / COMPARISON, WORKFLOW & CTA)
+       ========================================================================== */
+    .page-title-wrap {
+      margin-bottom: 0.9rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    .page-kicker {
+      font-size: 0.78rem;
+      font-weight: 900;
+      color: #6d28d9;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.2rem;
+    }
+    body.theme-dark .page-kicker {
+      color: #a78bfa;
+    }
+
+    .page-heading {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.7rem;
+      font-weight: 900;
+      line-height: 1.2;
+      color: #000000;
+    }
+    body.theme-dark .page-heading {
+      color: #ffffff;
+    }
+
+    /* ── COMPARISON TABLE ── */
+    .compare-table-wrap {
+      background: #ffffff;
+      border: 1.5px solid #0f172a;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      margin-bottom: 1.1rem;
+      box-shadow: var(--shadow-sm);
+      position: relative;
+      z-index: 10;
+    }
+    body.theme-dark .compare-table-wrap {
+      background: rgba(20, 22, 33, 0.95);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+      text-align: left;
+    }
+
+    .compare-table th {
+      padding: 0.65rem 0.75rem;
+      background: #0f172a;
+      color: #ffffff;
+      font-weight: 800;
+      border-bottom: 2px solid #0f172a;
+    }
+
+    .compare-table th.col-ss {
+      background: #6d28d9;
+      color: #ffffff;
+      font-weight: 900;
+      border-left: 2px solid #ffffff;
+      border-right: 2px solid #ffffff;
+    }
+    body.theme-dark .compare-table th.col-ss {
+      background: #7c3aed;
+    }
+
+    .compare-table td {
+      padding: 0.55rem 0.75rem;
+      border-bottom: 1px solid #cbd5e1;
+      color: #0f172a;
+      font-weight: 600;
+      vertical-align: middle;
+    }
+    body.theme-dark .compare-table td {
+      color: #e2e8f0;
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .compare-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .compare-table td.col-ss {
+      background: #f5f3ff;
+      font-weight: 800;
+      color: #000000;
+      border-left: 2px solid #cbd5e1;
+      border-right: 2px solid #cbd5e1;
+    }
+    body.theme-dark .compare-table td.col-ss {
+      background: rgba(139, 92, 246, 0.15);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .badge-check {
+      color: #047857;
+      font-weight: 900;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    body.theme-dark .badge-check {
+      color: #34d399;
+    }
+
+    .badge-cross {
+      color: #b91c1c;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    body.theme-dark .badge-cross {
+      color: #f87171;
+    }
+
+    /* ── 3-STEP ONBOARDING WORKFLOW ── */
+    .workflow-section {
+      background: #ffffff;
+      border: 1.5px solid #cbd5e1;
+      border-left: 4px solid #0f172a;
+      border-radius: var(--radius-md);
+      padding: 0.85rem 1rem;
+      margin-bottom: 1.1rem;
+      position: relative;
+      z-index: 10;
+    }
+    body.theme-dark .workflow-section {
+      background: rgba(20, 22, 33, 0.95);
+      border-color: rgba(255, 255, 255, 0.18);
+      border-left: 4px solid #a78bfa;
+    }
+
+    .workflow-heading {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 900;
+      color: #000000;
+      margin-bottom: 0.65rem;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+    body.theme-dark .workflow-heading {
+      color: #ffffff;
+    }
+
+    .steps-horizontal {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.9rem;
+      position: relative;
+    }
+
+    .step-box {
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #6d28d9;
+      color: #ffffff;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    body.theme-dark .step-num {
+      background: #a78bfa;
+      color: #0f172a;
+    }
+
+    .step-info h4 {
+      font-size: 0.84rem;
+      font-weight: 800;
+      color: #000000;
+      margin-bottom: 0.15rem;
+    }
+    body.theme-dark .step-info h4 {
+      color: #ffffff;
+    }
+
+    .step-info p {
+      font-size: 0.74rem;
+      color: #1e293b;
+      line-height: 1.35;
+      font-weight: 600;
+    }
+    body.theme-dark .step-info p {
+      color: #cbd5e1;
+    }
+
+    /* ── DUAL CARDS: TECH SPECS & BENEFIT ── */
+    .dual-cards-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.9rem;
+      margin-bottom: 1.1rem;
+      position: relative;
+      z-index: 10;
+    }
+
+    .info-card {
+      background: #ffffff;
+      border: 1.5px solid #cbd5e1;
+      border-radius: var(--radius-md);
+      padding: 0.85rem 0.95rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    body.theme-dark .info-card {
+      background: rgba(20, 22, 33, 0.95);
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .info-card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-bottom: 0.45rem;
+    }
+
+    .info-card-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.92rem;
+      font-weight: 800;
+      color: #000000;
+    }
+    body.theme-dark .info-card-title {
+      color: #ffffff;
+    }
+
+    .info-list {
+      list-style: none;
+      font-size: 0.76rem;
+      color: #1e293b;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      font-weight: 600;
+    }
+    body.theme-dark .info-list {
+      color: #cbd5e1;
+    }
+
+    .info-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.4rem;
+      line-height: 1.35;
+    }
+
+    .info-list li svg {
+      width: 15px;
+      height: 15px;
+      color: #6d28d9;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    body.theme-dark .info-list li svg {
+      color: #a78bfa;
+    }
+
+    /* ── BOTTOM MEGA CTA WITH QR CODE ── */
+    .cta-container {
+      background: #f5f3ff;
+      border: 2px solid #6d28d9;
+      border-radius: var(--radius-lg);
+      padding: 0.95rem 1.2rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1.3rem;
+      align-items: center;
+      box-shadow: var(--shadow-accent);
+      position: relative;
+      z-index: 10;
+    }
+    body.theme-dark .cta-container {
+      background: rgba(139, 92, 246, 0.15);
+      border-color: #a78bfa;
+    }
+
+    .cta-copy h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.3rem;
+      font-weight: 900;
+      color: #000000;
+      margin-bottom: 0.25rem;
+      line-height: 1.2;
+    }
+    body.theme-dark .cta-copy h3 {
+      color: #ffffff;
+    }
+
+    .cta-copy p {
+      font-size: 0.8rem;
+      color: #0f172a;
+      line-height: 1.4;
+      font-weight: 600;
+      margin-bottom: 0.55rem;
+    }
+    body.theme-dark .cta-copy p {
+      color: #e2e8f0;
+    }
+
+    .cta-contact-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      font-size: 0.78rem;
+      color: #000000;
+    }
+    body.theme-dark .cta-contact-row {
+      color: #ffffff;
+    }
+
+    .cta-contact-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-weight: 700;
+    }
+
+    .cta-qr-box {
+      background: #ffffff;
+      padding: 0.5rem;
+      border-radius: var(--radius-md);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      border: 2px solid #0f172a;
+    }
+
+    .cta-qr-box svg {
+      width: 82px;
+      height: 82px;
+      display: block;
+    }
+
+    .qr-caption {
+      font-size: 0.64rem;
+      font-weight: 900;
+      color: #000000;
+      margin-top: 0.25rem;
+      letter-spacing: 0.04em;
+    }
+
+    /* ==========================================================================
+       PRINT MEDIA QUERY (Exact High-Contrast A4 Paper Output)
+       ========================================================================== */
+    @page {
+      size: A4 portrait;
+      margin: 0mm;
+    }
+
+    @media print {
+      html, body {
+        background: #ffffff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 210mm !important;
+        height: auto !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .screen-toolbar {
+        display: none !important;
+      }
+
+      .print-sheet {
+        width: 210mm !important;
+        height: 297mm !important;
+        min-height: 297mm !important;
+        max-height: 297mm !important;
+        margin: 0 !important;
+        padding: 12mm 15mm !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+
+      /* Force highest readability on paper */
+      body:not(.theme-dark) .print-sheet {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+      }
+
+      body:not(.theme-dark) .hero-title,
+      body:not(.theme-dark) .page-heading,
+      body:not(.theme-dark) .pillar-text h3,
+      body:not(.theme-dark) .roi-title,
+      body:not(.theme-dark) .info-card-title,
+      body:not(.theme-dark) .cta-copy h3 {
+        color: #000000 !important;
+      }
+
+      body:not(.theme-dark) .hero-sub,
+      body:not(.theme-dark) .pillar-text p,
+      body:not(.theme-dark) .compare-table td,
+      body:not(.theme-dark) .step-info p,
+      body:not(.theme-dark) .info-list,
+      body:not(.theme-dark) .cta-copy p {
+        color: #0f172a !important;
+      }
+
+      body:not(.theme-dark) .pillar-box,
+      body:not(.theme-dark) .showcase-container,
+      body:not(.theme-dark) .compare-table-wrap,
+      body:not(.theme-dark) .workflow-section,
+      body:not(.theme-dark) .info-card {
+        background: #ffffff !important;
+        border-color: #cbd5e1 !important;
+      }
+
+      body:not(.theme-dark) .compare-table th {
+        background: #0f172a !important;
+        color: #ffffff !important;
+      }
+
+      body:not(.theme-dark) .compare-table th.col-ss {
+        background: #6d28d9 !important;
+        color: #ffffff !important;
+      }
+
+      body:not(.theme-dark) .compare-table td.col-ss {
+        background: #f5f3ff !important;
+        color: #000000 !important;
+      }
+
+      body:not(.theme-dark) .cta-container {
+        background: #f5f3ff !important;
+        border: 2px solid #6d28d9 !important;
+      }
+
+      /* Hide page 2 if user selected page 1 only */
+      body.only-page-1 #sheet-page-2 {
+        display: none !important;
+      }
+
+      /* Hide page 1 if user selected page 2 only */
+      body.only-page-2 #sheet-page-1 {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body class="theme-light">
+
+  <!-- ========================================================================
+       INTERACTIVE SCREEN TOOLBAR (Hidden in Print & PDF Export)
+       ======================================================================== -->
+  <header class="screen-toolbar" aria-label="Drucksteuerung">
+    <div class="toolbar-group">
+      <span style="font-weight: 800; color: #c4b5fd;">SimpleStaff Print Studio</span>
+    </div>
+    
+    <div class="toolbar-divider"></div>
+
+    <div class="toolbar-group">
+      <button class="btn-tool active" id="btn-theme-light" onclick="setTheme('light')">
+        ☀️ Weiß (Druckerei / Sparsam)
+      </button>
+      <button class="btn-tool" id="btn-theme-dark" onclick="setTheme('dark')">
+        🌌 Dark Glossy (Digital PDF)
+      </button>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <div class="toolbar-group">
+      <button class="btn-tool active" id="btn-view-all" onclick="setViewMode('all')">Beide Seiten</button>
+      <button class="btn-tool" id="btn-view-p1" onclick="setViewMode('p1')">Seite 1 (Front)</button>
+      <button class="btn-tool" id="btn-view-p2" onclick="setViewMode('p2')">Seite 2 (Back)</button>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <div class="toolbar-group">
+      <button class="btn-tool btn-print-primary" onclick="window.print()">
+        🖨️ Drucken / Als PDF speichern
+      </button>
+    </div>
+  </header>
+
+
+  <!-- ========================================================================
+       PAGE 1 – VORDERSEITE (VALUE PROPOSITION & PRODUCT HIGHLIGHTS)
+       ======================================================================== -->
+  <main class="print-sheet" id="sheet-page-1">
+    
+    <!-- Top Header -->
+    <header class="header-bar">
+      <a href="https://time.bls-isp.net" class="brand-logo">
+        <div class="logo-icon-svg">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+            <path d="M8 14h.01"></path>
+            <path d="M12 14h.01"></path>
+            <path d="M16 14h.01"></path>
+            <path d="M8 18h.01"></path>
+            <path d="M12 18h.01"></path>
+          </svg>
+        </div>
+        <div class="logo-text">Simple<span>Staff</span></div>
+      </a>
+
+      <div class="header-meta">
+        <div class="badge-live">
+          <span class="badge-dot"></span>
+          <span>ENTERPRISE READY</span>
+        </div>
+        <div class="header-domain">Live-Demo: <strong>time.bls-isp.net</strong></div>
+      </div>
+    </header>
+
+    <!-- Industry Focus Tags -->
+    <nav class="industry-tags" aria-label="Branchenfokus">
+      <span class="tag-item">🍽️ Gastronomie & Event</span>
+      <span class="tag-item">🩺 Pflege & Gesundheitswesen</span>
+      <span class="tag-item">🛒 Einzelhandel & Filialen</span>
+      <span class="tag-item">🔧 Handwerk & Industrie</span>
+      <span class="tag-item">🛡️ Sicherheitsdienste & KMU</span>
+    </nav>
+
+    <!-- Main Headline & Subtitle -->
+    <section class="hero-section">
+      <h1 class="hero-title">
+        Dienstplanung in Sekunden.<br>
+        <span class="highlight-purple">100% ArbZG-konform & automatisiert.</span>
+      </h1>
+      <p class="hero-sub">
+        Schluss mit Excel-Chaos, WhatsApp-Täuschen und Bußgeldrisiken. SimpleStaff vereint intelligenten KI-Schichtabgleich mit automatischer Arbeitszeitgesetz-Prüfung und digitaler Mitarbeiter-Einbindung.
+      </p>
+    </section>
+
+    <!-- 4 Core Pillars Grid -->
+    <section class="pillars-grid">
+      <!-- Pillar 1 -->
+      <article class="pillar-box">
+        <div class="pillar-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+          </svg>
+        </div>
+        <div class="pillar-text">
+          <h3>KI Auto-Scheduler</h3>
+          <p>Besetzt Wochen- & Monatspläne in Sekundenschnelle unter Berücksichtigung von Soll-Stunden & Wunschzeiten.</p>
+        </div>
+      </article>
+
+      <!-- Pillar 2 -->
+      <article class="pillar-box">
+        <div class="pillar-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            <path d="M9 12l2 2 4-4"></path>
+          </svg>
+        </div>
+        <div class="pillar-text">
+          <h3>ArbZG-Compliance Guard</h3>
+          <p>Live-Echtzeitprüfung auf 11h Ruhezeit, Pausen und max. 10h Höchstarbeitszeit. 0€ Bußgeldrisiko.</p>
+        </div>
+      </article>
+
+      <!-- Pillar 3 -->
+      <article class="pillar-box">
+        <div class="pillar-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+          </svg>
+        </div>
+        <div class="pillar-text">
+          <h3>Mitarbeiter-Portal & Tausch</h3>
+          <p>Eigener Smartphone-Zugang: Dienste per Knopfdruck tauschen und Dienstpläne im Handy-Kalender abonnieren.</p>
+        </div>
+      </article>
+
+      <!-- Pillar 4 -->
+      <article class="pillar-box">
+        <div class="pillar-icon-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M8 12h8"></path>
+            <path d="M12 8v8"></path>
+          </svg>
+        </div>
+        <div class="pillar-text">
+          <h3>Urlaubs- & Feiertags-Engine</h3>
+          <p>Automatischer Saldo-Abzug, Filterung von Schließtagen und Feiertagen sowie Zuweisungssperren.</p>
+        </div>
+      </article>
+    </section>
+
+    <!-- UI Screenshot Mockup Frame -->
+    <section class="showcase-container">
+      <div class="window-header">
+        <div class="window-dots">
+          <span class="window-dot dot-red"></span>
+          <span class="window-dot dot-yellow"></span>
+          <span class="window-dot dot-green"></span>
+        </div>
+        <div class="window-url">https://time.bls-isp.net/shift-plan</div>
+        <div style="font-size: 0.72rem; color: #6d28d9; font-weight: 800;">Wochenmatrix (Vollbelegung KW 35)</div>
+      </div>
+      <div class="showcase-img-wrap">
+        <img src="media/media_roster_filled.png" alt="SimpleStaff Dienstplan Grid Live Ansicht">
+        <div class="floating-pill pill-top-right">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          11h Ruhezeit validiert
+        </div>
+        <div class="floating-pill pill-bottom-left">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="3"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+          Auto-Scheduler aktiv (15 Sek.)
+        </div>
+      </div>
+    </section>
+
+    <!-- Hard ROI Numbers -->
+    <section class="roi-metrics-grid">
+      <div class="roi-stat-card">
+        <div class="roi-number">-80%</div>
+        <div class="roi-title">Planungszeit</div>
+        <div class="roi-subtitle">Stunden sparen in jeder Woche</div>
+      </div>
+      <div class="roi-stat-card">
+        <div class="roi-number">100%</div>
+        <div class="roi-title">ArbZG-Schutz</div>
+        <div class="roi-subtitle">Automatische Gesetzesprüfung</div>
+      </div>
+      <div class="roi-stat-card">
+        <div class="roi-number">0 €</div>
+        <div class="roi-title">Bußgeldrisiko</div>
+        <div class="roi-subtitle">Prüfungssichere Nachweise</div>
+      </div>
+      <div class="roi-stat-card">
+        <div class="roi-number">1-Klick</div>
+        <div class="roi-title">Lohnabschluss</div>
+        <div class="roi-subtitle">Excel / Datev CSV Export</div>
+      </div>
+    </section>
+
+    <!-- Footer Page 1 -->
+    <footer class="sheet-footer">
+      <div class="footer-security-text">
+        <strong>Enterprise Datensicherheit:</strong> PostgreSQL Row-Level Security (RLS) &bull; Mandantensicher &bull; DSGVO-konform
+      </div>
+      <a href="https://time.bls-isp.net" class="footer-cta-pill">
+        Live-Demo testen &rarr;
+      </a>
+    </footer>
+
+  </main>
+
+
+  <!-- ========================================================================
+       PAGE 2 – RÜCKSEITE (VERGLEICH, WORKFLOW, TECH SPECS & QR-CODE)
+       ======================================================================== -->
+  <main class="print-sheet" id="sheet-page-2">
+    
+    <!-- Header Page 2 -->
+    <div class="page-title-wrap">
+      <div class="page-kicker">Der System-Vergleich</div>
+      <h2 class="page-heading">Warum zukunftssichere Betriebe auf SimpleStaff setzen</h2>
+    </div>
+
+    <!-- Comparison Table -->
+    <section class="compare-table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th style="width: 32%;">Funktion / Anforderung</th>
+            <th style="width: 20%;">Manuell (Excel)</th>
+            <th style="width: 22%;">Alt-Software</th>
+            <th class="col-ss" style="width: 26%;">SimpleStaff</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Dienstplan-Erstellung</strong></td>
+            <td><span class="badge-cross">✕ 3–6 Std. / Woche</span></td>
+            <td>⚠️ 1–2 Std. / Woche</td>
+            <td class="col-ss"><span class="badge-check">✓ Sekundenschnell (KI)</span></td>
+          </tr>
+          <tr>
+            <td><strong>ArbZG-Ruhezeit (11h) Prüfung</strong></td>
+            <td><span class="badge-cross">✕ Manuell / Fehlerhaft</span></td>
+            <td>⚠️ Nur starre Regeln</td>
+            <td class="col-ss"><span class="badge-check">✓ Live-Echtzeitprüfung</span></td>
+          </tr>
+          <tr>
+            <td><strong>Mitarbeiter Smartphone-Abo</strong></td>
+            <td><span class="badge-cross">✕ PDF / Zettelaushang</span></td>
+            <td>⚠️ Teure Zusatzlizenz</td>
+            <td class="col-ss"><span class="badge-check">✓ Inklusive (Webcal QR)</span></td>
+          </tr>
+          <tr>
+            <td><strong>Schichttausch unter Kollegen</strong></td>
+            <td><span class="badge-cross">✕ WhatsApp-Chaos</span></td>
+            <td>⚠️ Nur über Planer</td>
+            <td class="col-ss"><span class="badge-check">✓ Smarte Tauschbörse</span></td>
+          </tr>
+          <tr>
+            <td><strong>Urlaubs- & Feiertagsfilter</strong></td>
+            <td><span class="badge-cross">✕ Manuelle Zählung</span></td>
+            <td>⚠️ Eingeschränkt</td>
+            <td class="col-ss"><span class="badge-check">✓ Vollautomatisch</span></td>
+          </tr>
+          <tr>
+            <td><strong>Mandantensicherheit (RLS)</strong></td>
+            <td><span class="badge-cross">✕ Keine Trennung</span></td>
+            <td>⚠️ Standard DB</td>
+            <td class="col-ss"><span class="badge-check">✓ Native PostgreSQL RLS</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 3-Step Workflow -->
+    <section class="workflow-section">
+      <div class="workflow-heading">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
+        In 3 einfachen Schritten startklar:
+      </div>
+      <div class="steps-horizontal">
+        <div class="step-box">
+          <div class="step-num">1</div>
+          <div class="step-info">
+            <h4>Mitarbeiter anlegen</h4>
+            <p>Stammdaten, Soll-Stunden & Wunschzeiten bequem erfassen.</p>
+          </div>
+        </div>
+        <div class="step-box">
+          <div class="step-num">2</div>
+          <div class="step-info">
+            <h4>Login freischalten</h4>
+            <p>Passwort vergeben – Mitarbeiter nutzen Portal & QR-Kalender.</p>
+          </div>
+        </div>
+        <div class="step-box">
+          <div class="step-num">3</div>
+          <div class="step-info">
+            <h4>Auto-Scheduling</h4>
+            <p>Dienstplan per KI generieren, prüfen & sofort freigeben.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dual Cards: Tech Specs & Benefit -->
+    <section class="dual-cards-grid">
+      <!-- Card 1 -->
+      <article class="info-card">
+        <div>
+          <div class="info-card-header">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+            <h3 class="info-card-title">Mitarbeiterzufriedenheit</h3>
+          </div>
+          <ul class="info-list">
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><strong>Live-Kalender:</strong> Automatischer Sync mit Apple Calendar, Google & Outlook.</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><strong>Schichttausch:</strong> Unkomplizierte Vertretungssuche ohne Manager-Stress.</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><strong>Transparenz:</strong> Urlaubssaldo und Stundenkonto stets mobil im Blick.</span>
+            </li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- Card 2 -->
+      <article class="info-card">
+        <div>
+          <div class="info-card-header">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <h3 class="info-card-title">Technologie & Compliance</h3>
+          </div>
+          <ul class="info-list">
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><strong>Row-Level-Security:</strong> Physische Mandantentrennung in PostgreSQL.</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><strong>Modernste Architektur:</strong> High-Speed Rust Backend & React UI.</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><strong>Cloud & On-Prem:</strong> Flexibel per Docker & Kubernetes betreibbar.</span>
+            </li>
+          </ul>
+        </div>
+      </article>
+    </section>
+
+    <!-- Bottom Mega CTA Box with Exact Vector QR Code -->
+    <section class="cta-container">
+      <div class="cta-copy">
+        <h3>Starten Sie noch heute Ihre kostenfreie Demo</h3>
+        <p>Erleben Sie SimpleStaff live in Ihrem Webbrowser – ohne Installation, direkt einsatzbereit für Ihr Team.</p>
+        <div class="cta-contact-row">
+          <div class="cta-contact-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            <span>time.bls-isp.net</span>
+          </div>
+          <div class="cta-contact-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+            <span>kontakt@bls-isp.net</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scannable High-Precision Vector SVG QR-Code to https://time.bls-isp.net -->
+      <div class="cta-qr-box">
+        <svg viewBox="0 0 25 25" role="img" aria-label="QR Code zu time.bls-isp.net">
+          <path fill="#FFFFFF" d="M0,0 h25v25H0z" shape-rendering="crispEdges"></path>
+          <path fill="#000000" d="M0 0h7v1H0zM9 0h2v1H9zM13 0h1v1H13zM16 0h1v1H16zM18,0 h7v1H18zM0 1h1v1H0zM6 1h1v1H6zM9 1h2v1H9zM12 1h1v1H12zM15 1h2v1H15zM18 1h1v1H18zM24,1 h1v1H24zM0 2h1v1H0zM2 2h3v1H2zM6 2h1v1H6zM8 2h4v1H8zM14 2h3v1H14zM18 2h1v1H18zM20 2h3v1H20zM24,2 h1v1H24zM0 3h1v1H0zM2 3h3v1H2zM6 3h1v1H6zM8 3h2v1H8zM12 3h3v1H12zM18 3h1v1H18zM20 3h3v1H20zM24,3 h1v1H24zM0 4h1v1H0zM2 4h3v1H2zM6 4h1v1H6zM8 4h1v1H8zM10 4h3v1H10zM14 4h1v1H14zM18 4h1v1H18zM20 4h3v1H20zM24,4 h1v1H24zM0 5h1v1H0zM6 5h1v1H6zM8 5h2v1H8zM11 5h1v1H11zM13 5h1v1H13zM15 5h2v1H15zM18 5h1v1H18zM24,5 h1v1H24zM0 6h7v1H0zM8 6h1v1H8zM10 6h1v1H10zM12 6h1v1H12zM14 6h1v1H14zM16 6h1v1H16zM18,6 h7v1H18zM8 7h1v1H8zM10 7h1v1H10zM12 7h1v1H12zM14 7h1v1H14zM0 8h1v1H0zM2 8h5v1H2zM9 8h2v1H9zM13 8h4v1H13zM18 8h5v1H18zM1 9h1v1H1zM3 9h3v1H3zM8 9h1v1H8zM10 9h2v1H10zM14 9h1v1H14zM16 9h1v1H16zM19 9h1v1H19zM23 9h1v1H23zM0 10h3v1H0zM4 10h3v1H4zM15 10h1v1H15zM21 10h1v1H21zM23,10 h2v1H23zM0 11h3v1H0zM10 11h2v1H10zM15 11h5v1H15zM24,11 h1v1H24zM2 12h1v1H2zM4 12h3v1H4zM8 12h3v1H8zM13 12h1v1H13zM17 12h4v1H17zM22,12 h3v1H22zM0 13h3v1H0zM4 13h1v1H4zM8 13h1v1H8zM10 13h1v1H10zM12 13h2v1H12zM16 13h1v1H16zM19 13h1v1H19zM21 13h1v1H21zM23 13h1v1H23zM0 14h1v1H0zM3 14h1v1H3zM6 14h4v1H6zM13 14h3v1H13zM17 14h1v1H17zM19 14h3v1H19zM23,14 h2v1H23zM0 15h1v1H0zM2 15h4v1H2zM8 15h2v1H8zM12 15h1v1H12zM17 15h4v1H17zM24,15 h1v1H24zM0 16h1v1H0zM2 16h2v1H2zM6 16h1v1H6zM12 16h9v1H12zM22 16h1v1H22zM8 17h3v1H8zM13 17h1v1H13zM15 17h2v1H15zM20 17h2v1H20zM0 18h7v1H0zM11 18h4v1H11zM16 18h1v1H16zM18 18h1v1H18zM20 18h1v1H20zM22,18 h3v1H22zM0 19h1v1H0zM6 19h1v1H6zM8 19h2v1H8zM11 19h1v1H11zM16 19h1v1H16zM20 19h2v1H20zM24,19 h1v1H24zM0 20h1v1H0zM2 20h3v1H2zM6 20h1v1H6zM8 20h1v1H8zM11 20h10v1H11zM22 20h1v1H22zM0 21h1v1H0zM2 21h3v1H2zM6 21h1v1H6zM8 21h3v1H8zM12 21h1v1H12zM15 21h4v1H15zM20,21 h5v1H20zM0 22h1v1H0zM2 22h3v1H2zM6 22h1v1H6zM8 22h3v1H8zM12 22h1v1H12zM14 22h1v1H14zM16 22h1v1H16zM21 22h2v1H21zM24,22 h1v1H24zM0 23h1v1H0zM6 23h1v1H6zM10 23h1v1H10zM14 23h8v1H14zM24,23 h1v1H24zM0 24h7v1H0zM8 24h1v1H8zM10 24h1v1H10zM13 24h3v1H13zM17,24 h8v1H17z" shape-rendering="crispEdges"></path>
+        </svg>
+        <span class="qr-caption">SCAN FOR DEMO</span>
+      </div>
+    </section>
+
+    <!-- Footer Page 2 -->
+    <footer class="sheet-footer" style="margin-top: 0.65rem;">
+      <div class="footer-security-text">
+        &copy; 2026 SimpleStaff &bull; BLS-ISP Solutions &bull; Alle Rechte vorbehalten.
+      </div>
+      <div style="font-size: 0.72rem; color: #0f172a; font-weight: 700;">
+        Stand: Version 2.4 / Enterprise Edition
+      </div>
+    </footer>
+
+  </main>
+
+
+  <!-- ========================================================================
+       CLIENT-SIDE SCRIPT FOR INTERACTIVE TOOLBAR
+       ======================================================================== -->
+  <script>
+    function setTheme(theme) {
+      const body = document.body;
+      const btnLight = document.getElementById('btn-theme-light');
+      const btnDark = document.getElementById('btn-theme-dark');
+      
+      if (theme === 'dark') {
+        body.classList.add('theme-dark');
+        body.classList.remove('theme-light');
+        btnDark.classList.add('active');
+        btnLight.classList.remove('active');
+      } else {
+        body.classList.add('theme-light');
+        body.classList.remove('theme-dark');
+        btnLight.classList.add('active');
+        btnDark.classList.remove('active');
+      }
+    }
+
+    function setViewMode(mode) {
+      const body = document.body;
+      const p1 = document.getElementById('sheet-page-1');
+      const p2 = document.getElementById('sheet-page-2');
+      const btnAll = document.getElementById('btn-view-all');
+      const btnP1 = document.getElementById('btn-view-p1');
+      const btnP2 = document.getElementById('btn-view-p2');
+
+      // Reset classes
+      body.classList.remove('only-page-1', 'only-page-2');
+      btnAll.classList.remove('active');
+      btnP1.classList.remove('active');
+      btnP2.classList.remove('active');
+
+      if (mode === 'p1') {
+        p1.style.display = 'flex';
+        p2.style.display = 'none';
+        body.classList.add('only-page-1');
+        btnP1.classList.add('active');
+      } else if (mode === 'p2') {
+        p1.style.display = 'none';
+        p2.style.display = 'flex';
+        body.classList.add('only-page-2');
+        btnP2.classList.add('active');
+      } else {
+        p1.style.display = 'flex';
+        p2.style.display = 'flex';
+        btnAll.classList.add('active');
+      }
+    }
+  </script>
+
+</body>
+</html>

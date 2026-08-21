@@ -1,4 +1,5 @@
 //! Assignment service — business logic for creating and managing shift assignments.
+#![allow(dead_code)]
 //!
 //! The main entry point, [`create_assignment_with_validation`], orchestrates:
 //! 1. Loading tenant settings

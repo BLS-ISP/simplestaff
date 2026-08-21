@@ -37,45 +37,6 @@ pub struct CalendarSubscriptionClaims {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Build an ICS calendar string for a given employee and their shift assignments.
-fn build_ics(
-    employee_name: &str,
-    assignments: &[(shift_assignment::Model, shift_type::Model)],
-) -> String {
-    let mut ics = String::new();
-
-    ics.push_str("BEGIN:VCALENDAR\r\n");
-    ics.push_str("VERSION:2.0\r\n");
-    ics.push_str("PRODID:-//SimpleStaff//Shift Calendar//EN\r\n");
-    ics.push_str("CALSCALE:GREGORIAN\r\n");
-    ics.push_str("METHOD:PUBLISH\r\n");
-    ics.push_str(&format!("X-WR-CALNAME:Shifts - {}\r\n", employee_name));
-
-    for (assignment, st) in assignments {
-        let date_str = assignment.assignment_date.format("%Y%m%d").to_string();
-        let start_time_str = st.start_time.format("%H%M%S").to_string();
-        let end_time_str = st.end_time.format("%H%M%S").to_string();
-
-        ics.push_str("BEGIN:VEVENT\r\n");
-        ics.push_str(&format!(
-            "UID:{}@simplestaff.local\r\n",
-            assignment.id
-        ));
-        ics.push_str(&format!("DTSTART:{}T{}\r\n", date_str, start_time_str));
-        ics.push_str(&format!("DTEND:{}T{}\r\n", date_str, end_time_str));
-        ics.push_str(&format!("SUMMARY:{}\r\n", st.name));
-        ics.push_str(&format!(
-            "DESCRIPTION:Break: {}min\r\n",
-            st.break_minutes
-        ));
-        ics.push_str("STATUS:CONFIRMED\r\n");
-        ics.push_str("END:VEVENT\r\n");
-    }
-
-    ics.push_str("END:VCALENDAR\r\n");
-    ics
-}
-
 /// Format an employee display name from optional first/last name fields.
 fn employee_display_name(emp: &employee::Model) -> String {
     let first = emp.first_name.as_deref().unwrap_or("");
@@ -142,7 +103,7 @@ async fn generate_ics_for_employee(
 
             let name = employee_display_name(&emp);
             let assignments = fetch_assignments_with_shift_types(txn, employee_id, tid).await?;
-            Ok(build_ics(&name, &assignments))
+            Ok(crate::services::calendar_service::generate_ics(&name, &assignments))
         })
     })
     .await

@@ -4,3 +4,19 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Rust
+backend/target/
+
+# Node
+node_modules/
+
+# Temporary / Scratch
+tree.json
+50update.py
+check_jobs.py
+check_runs.py

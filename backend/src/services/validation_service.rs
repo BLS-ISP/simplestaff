@@ -162,27 +162,24 @@ pub async fn validate_assignment(
             .ok_or_else(|| AppError::NotFound("Previous shift type not found".to_string()))?;
 
         let prev_end = prev_shift.end_time;
+        let prev_is_overnight = prev_shift.end_time < prev_shift.start_time;
 
-        // Calculate hours between prev shift end (previous day) and new shift start (assignment day).
-        // prev_end is on previous_day, new_start is on assignment_date.
-        let rest_minutes = if prev_end <= new_start {
-            // e.g. prev ended at 22:00 yesterday, new starts at 10:00 today → 12h gap
+        // Calculate hours between prev shift end and new shift start.
+        let rest_minutes = if prev_is_overnight {
+            // Night shift: started on previous day, ended on assignment_date at prev_end.
+            // Rest is the gap between prev_end and new_start on assignment_date.
+            let diff = time_diff_minutes(prev_end, new_start);
+            if diff > 0 {
+                diff
+            } else {
+                0
+            }
+        } else {
+            // Day shift: ended on previous day at prev_end.
+            // Rest is from prev_end to midnight (yesterday) + midnight to new_start (today).
             let minutes_until_midnight = minutes_from_time_to_midnight(prev_end);
             let minutes_from_midnight = minutes_from_midnight_to_time(new_start);
             minutes_until_midnight + minutes_from_midnight
-        } else {
-            // e.g. prev ended at 02:00 (night shift, actually today), new starts at 10:00 today
-            // prev_end is already "today" for a night shift
-            // The end is effectively on assignment_date already
-            let diff = time_diff_minutes(prev_end, new_start);
-            // If prev_end > new_start and it's a night shift from previous day,
-            // the actual end is on assignment_date, so rest = new_start - prev_end (same day)
-            if diff >= 0 {
-                diff
-            } else {
-                // new_start is before prev_end on the same logical day – overlap / no rest
-                0
-            }
         };
 
         let rest_hours = rest_minutes as f64 / 60.0;
@@ -581,4 +578,55 @@ fn minutes_from_time_to_midnight(time: NaiveTime) -> i64 {
 fn minutes_from_midnight_to_time(time: NaiveTime) -> i64 {
     let midnight = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
     time.signed_duration_since(midnight).num_minutes()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_day_shift_to_early_shift_rest() {
+        let prev_start = NaiveTime::from_hms_opt(8, 0, 0).unwrap();
+        let prev_end = NaiveTime::from_hms_opt(16, 0, 0).unwrap();
+        let new_start = NaiveTime::from_hms_opt(7, 0, 0).unwrap();
+
+        let prev_is_overnight = prev_end < prev_start;
+        assert!(!prev_is_overnight);
+
+        let minutes_until_midnight = minutes_from_time_to_midnight(prev_end);
+        let minutes_from_midnight = minutes_from_midnight_to_time(new_start);
+        let rest_hours = (minutes_until_midnight + minutes_from_midnight) as f64 / 60.0;
+
+        assert_eq!(rest_hours, 15.0); // 16:00 yesterday to 07:00 today = 15 hours
+    }
+
+    #[test]
+    fn test_night_shift_to_morning_shift_rest() {
+        let prev_start = NaiveTime::from_hms_opt(22, 0, 0).unwrap();
+        let prev_end = NaiveTime::from_hms_opt(6, 0, 0).unwrap();
+        let new_start = NaiveTime::from_hms_opt(8, 0, 0).unwrap();
+
+        let prev_is_overnight = prev_end < prev_start;
+        assert!(prev_is_overnight);
+
+        let diff = time_diff_minutes(prev_end, new_start);
+        let rest_hours = diff as f64 / 60.0;
+
+        assert_eq!(rest_hours, 2.0); // 06:00 today to 08:00 today = 2 hours
+    }
+
+    #[test]
+    fn test_night_shift_to_evening_shift_rest() {
+        let prev_start = NaiveTime::from_hms_opt(22, 0, 0).unwrap();
+        let prev_end = NaiveTime::from_hms_opt(6, 0, 0).unwrap();
+        let new_start = NaiveTime::from_hms_opt(18, 0, 0).unwrap();
+
+        let prev_is_overnight = prev_end < prev_start;
+        assert!(prev_is_overnight);
+
+        let diff = time_diff_minutes(prev_end, new_start);
+        let rest_hours = diff as f64 / 60.0;
+
+        assert_eq!(rest_hours, 12.0); // 06:00 today to 18:00 today = 12 hours
+    }
 }

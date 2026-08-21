@@ -38,6 +38,13 @@ ExecStartPre=/usr/bin/podman run -d --pod simplestaff-pod --name simplestaff-bac
   -e SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD} \
   -e SUPER_ADMIN_TENANT_NAME="SimpleStaff" \
   -e SUPER_ADMIN_TENANT_SLUG="simplestaff" \
+  -e SMTP_ENABLED=${SMTP_ENABLED} \
+  -e SMTP_HOST=${SMTP_HOST} \
+  -e SMTP_PORT=${SMTP_PORT} \
+  -e SMTP_USER=${SMTP_USER} \
+  -e SMTP_PASSWORD=${SMTP_PASSWORD} \
+  -e SMTP_FROM=${SMTP_FROM} \
+  -e APP_BASE_URL=${APP_BASE_URL} \
   ${SIMPLESTAFF_BACKEND_IMAGE}
 
 # Start 3. Nginx Frontend Container (Foreground process for Systemd lifecycle tracking)

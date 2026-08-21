@@ -8,13 +8,13 @@
             "type": "string",
             "title": "Domain name"
         },
+        "app_url": {
+            "type": "string",
+            "title": "Application URL"
+        },
         "super_admin_email": {
             "type": "string",
             "title": "Super admin email"
-        },
-        "super_admin_password": {
-            "type": "string",
-            "title": "Super admin password"
         },
         "lets_encrypt": {
             "type": "boolean",
@@ -23,6 +23,26 @@
         "http2https": {
             "type": "boolean",
             "title": "HTTP to HTTPS redirect"
+        },
+        "smtp_enabled": {
+            "type": "boolean",
+            "title": "SMTP Enabled"
+        },
+        "smtp_host": {
+            "type": "string",
+            "title": "SMTP Host"
+        },
+        "smtp_port": {
+            "type": "integer",
+            "title": "SMTP Port"
+        },
+        "smtp_user": {
+            "type": "string",
+            "title": "SMTP User"
+        },
+        "smtp_from": {
+            "type": "string",
+            "title": "SMTP From Address"
         }
     }
 }

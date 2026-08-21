@@ -50,7 +50,7 @@ Da es sich um ein **privates Repository** handelt, müssen Sie dem Nethserver-Ho
      > **WICHTIGER HINWEIS:** Jedes Mal, wenn Sie `podman login` ausführen, setzt Podman die Dateiberechtigungen von `/etc/nethserver/registry.json` aus Sicherheitsgründen automatisch wieder auf `600` (nur für root lesbar) zurück. Sie **müssen** die `chmod`-Befehle nach jedem Login/Änderung zwingend erneut ausführen!
 
 4. **Vorkonfiguration:**
-   * Die Image-Pfade in `/home/simplestaff1/.config/systemd/user/simplestaff.service` sind bereits fest auf Ihre Organisation `bls-isp` vorkonfiguriert. Es ist keine manuelle Pfad-Anpassung nötig.
+   * Die Image-Pfade in der Systemd-Konfiguration (`systemd/user/simplestaff.service`) sind bereits fest auf Ihre Organisation `bls-isp` vorkonfiguriert. Es ist keine manuelle Pfad-Anpassung nötig.
 
 ---
 
@@ -75,26 +75,26 @@ add-module ghcr.io/bls-isp/ns8-simplestaff:latest 1
 
 ## 4. Konfiguration & Aktivierung
 
-Nach der Installation konfigurieren wir die Umgebungsvariablen (wie Passwörter, Domäne, E-Mail-Adressen). Die Steuerung erfolgt über das Nethserver-Werkzeug `runagent`, welches Befehle sicher im Namespace der App-Instanz ausführt:
+Nach der Installation konfigurieren wir die Umgebungsvariablen (wie Passwörter, Domäne, E-Mail-Adressen). Die Steuerung erfolgt über das Nethserver-Werkzeug `runagent`, welches Befehle sicher im Namespace der App-Instanz (z. B. `simplestaff21`) ausführt:
 
 1. **Konfigurationsskript ausführen (JSON übergeben):**
    Geben Sie die Ziel-Domain `time.bls-isp.net` und die Admin-Daten an. Sichere Datenbankpasswörter und Verschlüsselungs-Schlüssel werden automatisch erzeugt.
    ```bash
-   echo '{"domain_name":"time.bls-isp.net", "super_admin_email":"admin@test.local", "super_admin_password":"admin123"}' | runagent -m simplestaff1 .config/actions/configure-module
+   echo '{"domain_name":"time.bls-isp.net", "super_admin_email":"admin@test.local", "super_admin_password":"admin123"}' | runagent -m simplestaff21 .config/actions/configure-module
    ```
 
 2. **Dienst starten (falls nicht bereits aktiv):**
    ```bash
-   runagent -m simplestaff1 systemctl --user enable --now simplestaff.service
+   runagent -m simplestaff21 systemctl --user enable --now simplestaff.service
    ```
 
 3. **Status und Logs einsehen:**
    ```bash
    # Systemd-Status der App prüfen:
-   runagent -m simplestaff1 systemctl --user status simplestaff.service
+   runagent -m simplestaff21 systemctl --user status simplestaff.service
    
    # Container-Status prüfen:
-   runagent -m simplestaff1 podman ps
+   runagent -m simplestaff21 podman ps
    ```
 
 4. **SSL & Ingress:**
@@ -108,7 +108,7 @@ Um die Demo-Zugangsdaten (Manager und Mitarbeiter) auf der Loginseite der App fr
 
 ```bash
 # Seeding-Binary über runagent im Backend-Container starten
-runagent -m simplestaff1 podman exec simplestaff-backend /app/seed_demo
+runagent -m simplestaff21 podman exec simplestaff-backend /app/seed_demo
 ```
 
 ### Logins auf `time.bls-isp.net`:
@@ -119,11 +119,15 @@ runagent -m simplestaff1 podman exec simplestaff-backend /app/seed_demo
 
 ## 6. Backups & Modul-Updates
 
-* **Daten-Backup:** Der persistente Zustand (Datenbank-Dateien und Konfigurationsumgebung) liegt im Ordner `/home/simplestaff1/.config/state/`. Dieser wird automatisch durch die Standard-Datensicherung von Nethserver 8 erfasst.
-* **Modul aktualisieren:** 
-  Wenn Sie Änderungen in GitHub pushen und GitHub Actions neue Images baut, aktualisieren Sie das Modul auf dem Nethserver einfach über:
+* **Daten-Backup:** Der persistente Zustand (Datenbank-Dateien und Konfigurationsumgebung) liegt im Ordner der Instanz (z. B. `/home/simplestaff21/.config/state/` bzw. `/var/lib/nethserver/simplestaff21/state/`). Dieser wird automatisch durch die Standard-Datensicherung von Nethserver 8 erfasst.
+* **Manuelle Datenbanksicherung (SQL-Dump):**
   ```bash
-  runagent -m simplestaff1 .config/update-module.d/10_restart
+  runagent -m simplestaff21 podman exec simplestaff-db pg_dump -U simplestaff simplestaff > simplestaff21_backup_$(date +%F).sql
   ```
-  Podman zieht dabei die neuesten Container-Images aus Ihrer privaten GHCR und startet die Dienste neu.
+* **Modul aktualisieren:** 
+  Wenn Sie Änderungen in GitHub pushen und GitHub Actions neue Images baut, aktualisieren Sie die Container auf dem Nethserver einfach über:
+  ```bash
+  runagent -m simplestaff21 systemctl --user restart simplestaff.service
+  ```
+  Oder über das NethServer 8 Software Center / `update-module`.
 
