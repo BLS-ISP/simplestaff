@@ -158,7 +158,7 @@ export default {
     },
     setAppName() {
       const metadata = require("../public/metadata.json");
-      const appName = metadata.name;
+      const appName = metadata.display_name || metadata.name;
       this.setAppNameInStore(appName);
     },
   },

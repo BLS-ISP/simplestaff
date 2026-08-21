@@ -50,7 +50,7 @@
                 />
               </div>
               <div class="app-name">
-                <h3>{{ app.name }}</h3>
+                <h3>{{ app.display_name || app.name }}</h3>
               </div>
             </div>
             <div class="description">

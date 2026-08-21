@@ -1,5 +1,6 @@
 {
-  "name": "SimpleStaff",
+  "name": "ns8-simplestaff",
+  "display_name": "SimpleStaff",
   "upstream_name": "SimpleStaff",
   "description": {
     "en": "Intelligent shift management and ArbZG compliance system.",
