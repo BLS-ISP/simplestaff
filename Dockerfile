@@ -1,16 +1,25 @@
 # ============================================
-# Nethserver 8 - Module Installer Image
+# Stage 1: Build Vue.js NS8 Cockpit UI
 # ============================================
-# Built with buildah-like approach: scratch image + imageroot + built UI
-# The GitHub Action builds the Vue.js UI and copies the dist output.
+FROM node:18-alpine AS ui-builder
 
+WORKDIR /build
+COPY ui/package.json ui/yarn.lock* ./
+RUN corepack enable && yarn install
+COPY ui/ ./
+ENV NODE_OPTIONS=--openssl-legacy-provider
+RUN yarn build
+
+# ============================================
+# Stage 2: NethServer 8 Module Installer Image
+# ============================================
 FROM alpine:latest
 
-# Copy imageroot (actions, systemd, hooks) and built UI (from dist/)
+# Copy imageroot (actions, systemd, hooks) and compiled UI
 COPY imageroot /imageroot
-COPY ui/dist /ui
+COPY --from=ui-builder /build/dist /ui
 
-# Nethserver 8 Module metadata labels
+# NethServer 8 Module metadata labels
 LABEL org.nethserver.rootfull="0" \
       org.nethserver.images="ghcr.io/bls-isp/simplestaff-backend:latest ghcr.io/bls-isp/simplestaff-frontend:latest" \
       org.nethserver.authorizations="traefik@node:routeadm" \
