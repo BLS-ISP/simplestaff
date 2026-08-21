@@ -63,7 +63,7 @@ pub async fn send_email(
 ) -> Result<(), String> {
     if !config.smtp_enabled {
         info!(
-            "SMTP disabled/unconfigured. Skipping email to '{}' [Subject: '{}']",
+            "SMTP disabled in config. Skipping email to '{}' [Subject: '{}']",
             to, subject
         );
         return Ok(());
@@ -72,7 +72,7 @@ pub async fn send_email(
     let host = match &config.smtp_host {
         Some(h) if !h.trim().is_empty() => h.clone(),
         _ => {
-            info!("No SMTP_HOST specified. Email to '{}' logged only.", to);
+            info!("No SMTP_HOST configured. Skipping email to '{}' [Subject: '{}']", to, subject);
             return Ok(());
         }
     };
@@ -80,15 +80,16 @@ pub async fn send_email(
     let from_addr = config
         .smtp_from
         .clone()
-        .unwrap_or_else(|| "noreply@simplestaff.local".to_string());
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "SimpleStaff <noreply@bls-isp.net>".to_string());
 
     let email = Message::builder()
         .from(
             from_addr
                 .parse()
-                .map_err(|e| format!("Invalid from address: {e}"))?,
+                .map_err(|e| format!("Invalid from address '{from_addr}': {e}"))?,
         )
-        .to(to.parse().map_err(|e| format!("Invalid to address: {e}"))?)
+        .to(to.parse().map_err(|e| format!("Invalid to address '{to}': {e}"))?)
         .subject(subject)
         .header(ContentType::TEXT_HTML)
         .body(html_body.to_string())
@@ -96,30 +97,40 @@ pub async fn send_email(
 
     let port = config.smtp_port.unwrap_or(587);
 
+    info!(
+        "Connecting to SMTP relay at '{}:{}' to send email to '{}'...",
+        host, port, to
+    );
+
     let mut transport_builder = if port == 465 {
         AsyncSmtpTransport::<Tokio1Executor>::relay(&host)
-            .map_err(|e| format!("SMTP relay error: {e}"))?
+            .map_err(|e| format!("SMTP SSL relay error on port 465: {e}"))?
+            .port(port)
+    } else if port == 25 {
+        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&host)
             .port(port)
     } else {
         AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&host)
-            .map_err(|e| format!("SMTP STARTTLS relay error: {e}"))?
+            .map_err(|e| format!("SMTP STARTTLS relay error on port {port}: {e}"))?
             .port(port)
     };
 
     if let (Some(user), Some(pass)) = (&config.smtp_user, &config.smtp_password) {
-        transport_builder =
-            transport_builder.credentials(Credentials::new(user.clone(), pass.clone()));
+        if !user.trim().is_empty() && !pass.trim().is_empty() {
+            transport_builder =
+                transport_builder.credentials(Credentials::new(user.clone(), pass.clone()));
+        }
     }
 
     let transport = transport_builder.build();
 
     match transport.send(email).await {
         Ok(_) => {
-            info!("Email successfully sent to '{}' [Subject: '{}']", to, subject);
+            info!("Email successfully delivered to '{}' [Subject: '{}']", to, subject);
             Ok(())
         }
         Err(e) => {
-            error!("Failed to send email to '{}': {e}", to);
+            error!("Failed to send email to '{}' via '{}:{}': {e}", to, host, port);
             Err(e.to_string())
         }
     }

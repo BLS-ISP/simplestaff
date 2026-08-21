@@ -114,6 +114,17 @@ async fn main() {
         )
         .init();
 
+    if config.smtp_enabled {
+        tracing::info!(
+            "SMTP email notifications ENABLED: host='{}:{}', from='{}'",
+            config.smtp_host.as_deref().unwrap_or("<none>"),
+            config.smtp_port.unwrap_or(587),
+            config.smtp_from.as_deref().unwrap_or("<none>")
+        );
+    } else {
+        tracing::info!("SMTP email notifications DISABLED in configuration.");
+    }
+
     // Connect to the database.
     let db: DatabaseConnection = Database::connect(&config.database_url)
         .await

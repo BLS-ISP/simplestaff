@@ -35,8 +35,8 @@ impl Config {
         let smtp_password = env::var("SMTP_PASSWORD").ok().filter(|s| !s.trim().is_empty());
         let smtp_from = env::var("SMTP_FROM").ok().filter(|s| !s.trim().is_empty());
         let smtp_enabled = env::var("SMTP_ENABLED")
-            .map(|v| v == "true" || v == "1")
-            .unwrap_or(smtp_host.is_some());
+            .map(|v| v.eq_ignore_ascii_case("true") || v == "1" || v.eq_ignore_ascii_case("yes"))
+            .unwrap_or_else(|_| smtp_host.is_some());
         let app_base_url = env::var("APP_BASE_URL")
             .unwrap_or_else(|_| "https://time.bls-isp.net".to_string());
 
