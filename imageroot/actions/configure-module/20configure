@@ -88,7 +88,7 @@ try:
     agent.set_env('APP_BASE_URL', f"https://{domain_name}")
 
     # 6. Ensure state directories
-    os.makedirs(os.path.expanduser('~/.config/state/postgres_data'), exist_ok=True)
+    os.makedirs(os.path.expanduser('~/state/postgres_data'), exist_ok=True)
 
     # 7. Configure Traefik
     module_id = os.environ.get('MODULE_ID')

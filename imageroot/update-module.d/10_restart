@@ -6,7 +6,18 @@
 exec 1>&2  # Redirect stdout to stderr for journald logging
 echo "SimpleStaff: Update hook starting..."
 
-if [ -f environment ]; then
+# Migrate legacy state directory if present in ~/.config/state
+if [ -d "$HOME/.config/state" ] && [ ! -d "$HOME/state" ]; then
+    echo "SimpleStaff: Migrating legacy state directory to $HOME/state..."
+    mv "$HOME/.config/state" "$HOME/state" 2>/dev/null || true
+fi
+
+if [ -f "$HOME/state/environment" ]; then
+    echo "SimpleStaff: Loading environment variables from state/environment..."
+    set -a
+    . "$HOME/state/environment"
+    set +a
+elif [ -f environment ]; then
     echo "SimpleStaff: Loading environment variables..."
     set -a
     . ./environment

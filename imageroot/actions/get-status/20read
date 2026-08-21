@@ -74,7 +74,7 @@ try:
     volumes = [
         {
             "name": "postgres_data",
-            "mount": os.path.expanduser('~/.config/state/postgres_data'),
+            "mount": os.path.expanduser('~/state/postgres_data'),
             "created": "-"
         }
     ]
