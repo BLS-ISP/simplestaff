@@ -186,6 +186,21 @@
                   ref="smtpFrom"
                   class="field-item"
                 ></cv-text-input>
+
+                <div class="smtp-test-box">
+                  <NsButton
+                    kind="tertiary"
+                    :icon="Send20"
+                    size="small"
+                    :loading="loading.sendTestEmail"
+                    :disabled="loading.getConfiguration || loading.configureModule || loading.sendTestEmail || !smtpHost"
+                    @click.prevent="sendTestEmail"
+                    class="test-email-btn"
+                  >
+                    {{ $t("settings.send_test_email") }}
+                  </NsButton>
+                  <span class="test-email-hint">{{ $t("settings.send_test_email_hint", { email: superAdminEmail }) }}</span>
+                </div>
               </div>
             </div>
           </cv-tile>
@@ -225,6 +240,7 @@ import { mapState } from "vuex";
 import Globe20 from "@carbon/icons-vue/es/globe/20";
 import Email20 from "@carbon/icons-vue/es/email/20";
 import Save20 from "@carbon/icons-vue/es/save/20";
+import Send20 from "@carbon/icons-vue/es/send/20";
 import {
   QueryParamService,
   UtilService,
@@ -252,6 +268,7 @@ export default {
   data() {
     return {
       Save20,
+      Send20,
       q: {
         page: "settings",
       },
@@ -271,10 +288,12 @@ export default {
       loading: {
         getConfiguration: false,
         configureModule: false,
+        sendTestEmail: false,
       },
       error: {
         getConfiguration: "",
         configureModule: "",
+        sendTestEmail: "",
         domainName: "",
         superAdminEmail: "",
         superAdminPassword: "",
@@ -481,6 +500,57 @@ export default {
 
       this.getConfiguration();
     },
+    async sendTestEmail() {
+      this.loading.sendTestEmail = true;
+      this.error.sendTestEmail = "";
+      const taskAction = "send-test-email";
+      const eventId = this.getUuid();
+
+      this.core.$root.$once(
+        `${taskAction}-aborted-${eventId}`,
+        this.sendTestEmailAborted
+      );
+
+      this.core.$root.$once(
+        `${taskAction}-completed-${eventId}`,
+        this.sendTestEmailCompleted
+      );
+
+      const [err] = await to(
+        this.createModuleTaskForApp(this.instanceName, {
+          action: taskAction,
+          data: {
+            to: this.superAdminEmail,
+          },
+          extra: {
+            title: this.$t("action." + taskAction),
+            description: this.$t("common.processing"),
+            eventId,
+          },
+        })
+      );
+
+      if (err) {
+        this.loading.sendTestEmail = false;
+        this.createErrorNotificationForApp(
+          this.getErrorMessage(err) || this.$t("settings.test_email_failed")
+        );
+      }
+    },
+    sendTestEmailCompleted() {
+      this.loading.sendTestEmail = false;
+      this.createSuccessNotificationForApp(
+        this.$t("settings.test_email_sent", { email: this.superAdminEmail })
+      );
+    },
+    sendTestEmailAborted(taskResult) {
+      this.loading.sendTestEmail = false;
+      const errorMsg =
+        taskResult && taskResult.error
+          ? taskResult.error
+          : this.$t("settings.test_email_failed");
+      this.createErrorNotificationForApp(errorMsg);
+    },
   },
 };
 </script>
@@ -616,6 +686,20 @@ export default {
   flex-direction: column;
   gap: $spacing-05;
   margin-top: $spacing-02;
+}
+
+.smtp-test-box {
+  display: flex;
+  align-items: center;
+  gap: $spacing-04;
+  padding-top: $spacing-03;
+  border-top: 1px dashed $ui-03;
+  margin-top: $spacing-02;
+
+  .test-email-hint {
+    font-size: 0.75rem;
+    color: $text-02;
+  }
 }
 
 .error-wrapper {

@@ -77,17 +77,33 @@ pub async fn send_email(
         }
     };
 
-    let from_addr = config
+    let raw_from = config
         .smtp_from
-        .clone()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "SimpleStaff <noreply@bls-isp.net>".to_string());
+        .as_deref()
+        .unwrap_or("")
+        .trim();
+
+    let user_email = config
+        .smtp_user
+        .as_deref()
+        .unwrap_or("")
+        .trim();
+
+    let from_formatted = if raw_from.contains('@') {
+        raw_from.to_string()
+    } else if !raw_from.is_empty() && user_email.contains('@') {
+        format!("{raw_from} <{user_email}>")
+    } else if user_email.contains('@') {
+        format!("SimpleStaff <{user_email}>")
+    } else {
+        "SimpleStaff <noreply@bls-isp.net>".to_string()
+    };
 
     let email = Message::builder()
         .from(
-            from_addr
+            from_formatted
                 .parse()
-                .map_err(|e| format!("Invalid from address '{from_addr}': {e}"))?,
+                .map_err(|e| format!("Invalid from address '{from_formatted}': {e}"))?,
         )
         .to(to.parse().map_err(|e| format!("Invalid to address '{to}': {e}"))?)
         .subject(subject)

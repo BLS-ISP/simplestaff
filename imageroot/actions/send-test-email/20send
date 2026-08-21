@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+
+#
+# SimpleStaff - Send Test Email Action
+# Verifies SMTP connectivity and sends a test email to the administrator.
+#
+
+import os
+import sys
+import json
+import smtplib
+import ssl
+from email.message import EmailMessage
+
+def log_error(msg):
+    print(f"ERROR: {msg}", file=sys.stderr)
+
+try:
+    import agent
+except Exception as e:
+    log_error(f"Failed to import NS8 agent: {e}")
+    sys.exit(1)
+
+try:
+    raw_input_data = sys.stdin.read()
+    request = json.loads(raw_input_data) if raw_input_data.strip() else {}
+except Exception:
+    request = {}
+
+host = os.environ.get('SMTP_HOST', '').strip()
+if not host:
+    log_error("Kein SMTP-Host konfiguriert. Bitte speichere zuerst die SMTP-Einstellungen.")
+    sys.exit(1)
+
+port_raw = os.environ.get('SMTP_PORT', '587').strip()
+try:
+    port = int(port_raw)
+except ValueError:
+    port = 587
+
+user = os.environ.get('SMTP_USER', '').strip()
+password = os.environ.get('SMTP_PASSWORD', '').strip()
+raw_from = os.environ.get('SMTP_FROM', '').strip()
+to_addr = request.get('to') or os.environ.get('SUPER_ADMIN_EMAIL', '').strip() or user
+
+if not to_addr:
+    log_error("Keine Empfängeradresse angegeben.")
+    sys.exit(1)
+
+# Format From address
+if '@' in raw_from:
+    from_addr = raw_from
+elif raw_from and '@' in user:
+    from_addr = f"{raw_from} <{user}>"
+elif '@' in user:
+    from_addr = f"SimpleStaff <{user}>"
+else:
+    from_addr = "SimpleStaff <noreply@bls-isp.net>"
+
+msg = EmailMessage()
+msg['Subject'] = "SimpleStaff - Test-E-Mail (SMTP-Konfiguration erfolgreich)"
+msg['From'] = from_addr
+msg['To'] = to_addr
+
+html_content = f"""<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {{ font-family: sans-serif; background: #f8fafc; color: #0f172a; padding: 20px; }}
+    .card {{ background: #ffffff; max-width: 500px; margin: 0 auto; border-radius: 10px; border: 1px solid #e2e8f0; padding: 24px; }}
+    .header {{ color: #4338ca; font-size: 20px; font-weight: bold; margin-bottom: 12px; }}
+    .badge {{ background: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 13px; }}
+    .footer {{ margin-top: 24px; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 12px; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">✓ SimpleStaff SMTP-Test</div>
+    <p>Herzlichen Glückwunsch! Die E-Mail-Konfiguration für <strong>SimpleStaff</strong> auf NethServer 8 ist voll funktionsfähig.</p>
+    <p><span class="badge">SMTP Verbindung erfolgreich</span></p>
+    <p style="font-size: 13px; color: #475569;">
+      <strong>Host:</strong> {host}:{port}<br>
+      <strong>Benutzer:</strong> {user or 'Keine Authentifizierung'}<br>
+      <strong>Absender:</strong> {from_addr}
+    </p>
+    <div class="footer">
+      Gesendet von SimpleStaff auf NethServer 8.
+    </div>
+  </div>
+</body>
+</html>"""
+
+msg.set_content(f"SimpleStaff Test-E-Mail: Die SMTP-Konfiguration für {host}:{port} ist erfolgreich.")
+msg.add_alternative(html_content, subtype='html')
+
+try:
+    print(f"Connecting to SMTP server {host}:{port}...", file=sys.stderr)
+    if port == 465:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(host, port, context=context, timeout=15) as server:
+            if user and password:
+                server.login(user, password)
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(host, port, timeout=15) as server:
+            server.ehlo()
+            if port != 25:
+                try:
+                    context = ssl.create_default_context()
+                    server.starttls(context=context)
+                    server.ehlo()
+                except Exception as e:
+                    print(f"STARTTLS warning: {e}", file=sys.stderr)
+            if user and password:
+                server.login(user, password)
+            server.send_message(msg)
+
+    print(json.dumps({"status": "success", "message": f"Test-E-Mail erfolgreich an {to_addr} versendet."}))
+    sys.exit(0)
+
+except smtplib.SMTPAuthenticationError as e:
+    log_error(f"SMTP Authentifizierungsfehler: Benutzername oder Passwort ungültig ({e})")
+    sys.exit(1)
+except Exception as e:
+    log_error(f"Fehler beim Senden der Test-E-Mail: {e}")
+    sys.exit(1)

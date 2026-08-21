@@ -72,7 +72,11 @@
     "smtp_password": "SMTP-Passwort",
     "smtp_password_placeholder": "Passwort für den Mailversand (leer lassen für unverändert)",
     "smtp_from": "Absender-Adresse (From)",
-    "smtp_from_placeholder": "z.B. SimpleStaff <noreply@firma.de>",
+    "smtp_from_placeholder": "z.B. SimpleStaff <noreply@firma.de> oder SimpleStaff",
+    "send_test_email": "Test-E-Mail senden",
+    "send_test_email_hint": "Sendet eine Testnachricht an {email}",
+    "test_email_sent": "Test-E-Mail wurde erfolgreich an {email} versendet!",
+    "test_email_failed": "Fehler beim Senden der Test-E-Mail.",
     "enabled": "Aktiviert",
     "disabled": "Deaktiviert",
     "configure_instance": "{instance} konfigurieren"
@@ -92,7 +96,8 @@
     "get-configuration": "Konfiguration laden",
     "configure-module": "Modul konfigurieren",
     "get-status": "Status abrufen",
-    "get-name": "Instanzname abrufen"
+    "get-name": "Instanzname abrufen",
+    "send-test-email": "Test-E-Mail senden"
   },
   "error": {
     "generic_error": "Ein unerwarteter Fehler ist aufgetreten."

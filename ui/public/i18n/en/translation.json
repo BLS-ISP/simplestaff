@@ -72,7 +72,11 @@
     "smtp_password": "SMTP Password",
     "smtp_password_placeholder": "Password for SMTP mail delivery (leave empty to keep unchanged)",
     "smtp_from": "Sender Address (From)",
-    "smtp_from_placeholder": "e.g. SimpleStaff <noreply@example.com>",
+    "smtp_from_placeholder": "e.g. SimpleStaff <noreply@example.com> or SimpleStaff",
+    "send_test_email": "Send Test Email",
+    "send_test_email_hint": "Sends a test email to {email}",
+    "test_email_sent": "Test email was successfully sent to {email}!",
+    "test_email_failed": "Failed to send test email.",
     "enabled": "Enabled",
     "disabled": "Disabled",
     "configure_instance": "Configure {instance}"
@@ -92,7 +96,8 @@
     "get-configuration": "Get Configuration",
     "configure-module": "Configure Module",
     "get-status": "Get Status",
-    "get-name": "Get Instance Name"
+    "get-name": "Get Instance Name",
+    "send-test-email": "Send Test Email"
   },
   "error": {
     "generic_error": "An unexpected error occurred."
