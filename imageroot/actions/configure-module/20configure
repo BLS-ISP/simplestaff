@@ -87,8 +87,17 @@ try:
     agent.set_env('SMTP_FROM', str(smtp_from))
     agent.set_env('APP_BASE_URL', f"https://{domain_name}")
 
-    # 6. Ensure state directories
+    # 6. Ensure state directories and sync environment file
     os.makedirs(os.path.expanduser('~/state/postgres_data'), exist_ok=True)
+    os.makedirs(os.path.expanduser('~/.config/state'), exist_ok=True)
+    try:
+        import shutil
+        src_env = os.path.expanduser('~/.config/state/environment')
+        dst_env = os.path.expanduser('~/state/environment')
+        if os.path.exists(src_env):
+            shutil.copy2(src_env, dst_env)
+    except Exception:
+        pass
 
     # 7. Configure Traefik
     module_id = os.environ.get('MODULE_ID')
