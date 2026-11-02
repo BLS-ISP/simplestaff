@@ -1,5 +1,5 @@
 {
-  "name": "ns8-simplestaff",
+  "name": "SimpleStaff",
   "display_name": "SimpleStaff",
   "upstream_name": "SimpleStaff",
   "description": {
@@ -16,7 +16,9 @@
   "docs": {
     "documentation_url": "https://time.bls-isp.net",
     "code_url": "https://github.com/BLS-ISP/simplestaff",
-    "bug_url": "https://github.com/BLS-ISP/simplestaff/issues"
+    "bug_url": "https://github.com/BLS-ISP/simplestaff/issues",
+    "relnotes_url": "https://github.com/BLS-ISP/simplestaff/releases",
+    "terms_url": "https://github.com/BLS-ISP/simplestaff"
   },
   "source": "ghcr.io/bls-isp/ns8-simplestaff"
 }

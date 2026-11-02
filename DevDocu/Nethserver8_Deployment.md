@@ -35,12 +35,38 @@ Der Workflow `.github/workflows/build-and-publish.yml` baut und veröffentlicht 
 
 ---
 
-## 3. Modul auf NethServer 8 installieren
+## 3. Installation & Updates über das NethServer 8 Software Center (UI)
 
-Führen Sie als **root** auf dem NethServer 8 Host folgenden Befehl aus:
+### 3.1 Software-Repository in der NS8 UI hinterlegen (Einmalig)
+Damit SimpleStaff direkt im **NethServer 8 Software Center** installiert und über **Software Center → Updates** per Klick aktualisiert werden kann:
+1. Öffnen Sie das **NethServer 8 Cluster-Admin-Panel**.
+2. Navigieren Sie zu **Software center → Settings → Software repositories → Add repository**.
+3. Tragen Sie folgende Daten ein:
+   * **Name:** `bls-isp-simplestaff`
+   * **URL:** `https://raw.githubusercontent.com/BLS-ISP/simplestaff/repomd/`
+   * **Status:** Enabled
+4. Künftig erscheint jedes neue Release (automatisch bei jedem Push auf `main` als neue SemVer-Version veröffentlicht) direkt unter **Software center → Updates**.
+
+> [!TIP]
+> Um den 1-Stunden-Repository-Cache von NethServer 8 sofort zu leeren, damit ein frisch gebautes Update augenblicklich in der UI erscheint:
+> ```bash
+> redis-cli del cluster/repository_cache/bls-isp-simplestaff
+> ```
+
+### 3.2 Bereits mit `:latest` installierte Instanz für UI-Updates freischalten (Einmalig)
+Falls Ihre bestehende Instanz (`ns8-simplestaff1`) ursprünglich mit dem `:latest`-Tag installiert wurde, ignoriert das NS8 Software Center diese Instanz bei der Update-Suche, da NS8 für den Versionsvergleich eine echte SemVer-Versionsnummer (`X.Y.Z`) voraussetzt.
+Führen Sie **einmalig** folgenden Befehl auf dem NS8-Host aus, um die bestehende Instanz auf die SemVer-Spur umzustellen (alle Daten bleiben vollständig erhalten):
 
 ```bash
-add-module ghcr.io/bls-isp/ns8-simplestaff:1.1.2 1
+api-cli run update-module --data '{"module_url":"ghcr.io/bls-isp/ns8-simplestaff:1.1.3","instances":["ns8-simplestaff1"],"force":true}'
+```
+Ab diesem Zeitpunkt lässt sich die Instanz bei jedem künftigen Release ganz normal in der **NethServer 8 UI unter Software center → Updates** aktualisieren.
+
+### 3.3 Neuinstallation per CLI (Alternativ)
+Führen Sie als **root** auf dem NethServer 8 Host folgenden Befehl mit einem SemVer-Tag aus:
+
+```bash
+add-module ghcr.io/bls-isp/ns8-simplestaff:1.1.3 1
 ```
 
 *Was NethServer 8 dabei automatisch ausführt:*
