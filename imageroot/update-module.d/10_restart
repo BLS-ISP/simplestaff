@@ -8,12 +8,39 @@ echo "SimpleStaff: Update hook starting..."
 
 mkdir -p "$HOME/state/postgres_data" "$HOME/.config/state"
 
-# Synchronize environment files between ~/.config/state and ~/state
-if [ -f "$HOME/.config/state/environment" ]; then
-    cp -f "$HOME/.config/state/environment" "$HOME/state/environment" 2>/dev/null || true
-elif [ -f "$HOME/state/environment" ]; then
-    cp -f "$HOME/state/environment" "$HOME/.config/state/environment" 2>/dev/null || true
-fi
+# Merge and synchronize environment files between ~/state/environment and ~/.config/state/environment
+# so legacy secrets (DATABASE_PASSWORD, JWT_SECRET) from ~/state are preserved while new *_IMAGE tags
+# written by NS8 update-module into ~/.config/state/environment take precedence.
+python3 - <<'EOF'
+import os
+import agent
+
+legacy_path = os.path.expanduser("~/state/environment")
+config_path = os.path.expanduser("~/.config/state/environment")
+
+merged = {}
+if os.path.exists(legacy_path):
+    try:
+        merged.update(agent.read_envfile(legacy_path))
+    except Exception:
+        pass
+
+if os.path.exists(config_path):
+    try:
+        merged.update(agent.read_envfile(config_path))
+    except Exception:
+        pass
+
+# Ensure image variables passed in environment by update-module always win
+for img_key in ("POSTGRES_IMAGE", "SIMPLESTAFF_BACKEND_IMAGE", "SIMPLESTAFF_FRONTEND_IMAGE"):
+    val = os.environ.get(img_key, "").strip()
+    if val:
+        merged[img_key] = val
+
+if merged:
+    agent.write_envfile(config_path, merged)
+    agent.write_envfile(legacy_path, merged)
+EOF
 
 if [ -f "$HOME/.config/state/environment" ]; then
     echo "SimpleStaff: Loading environment variables..."

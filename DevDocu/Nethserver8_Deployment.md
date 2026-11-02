@@ -40,11 +40,11 @@ Der Workflow `.github/workflows/build-and-publish.yml` baut und veröffentlicht 
 Führen Sie als **root** auf dem NethServer 8 Host folgenden Befehl aus:
 
 ```bash
-add-module ghcr.io/bls-isp/ns8-simplestaff:latest 1
+add-module ghcr.io/bls-isp/ns8-simplestaff:1.1.2 1
 ```
 
 *Was NethServer 8 dabei automatisch ausführt:*
-1. Erstellt den rootless Systembenutzer (z. B. `simplestaff1`).
+1. Erstellt den rootless Systembenutzer (z. B. `ns8-simplestaff1`).
 2. Lädt alle in `org.nethserver.images` definierten Container-Images (`postgres:15-alpine`, `simplestaff-backend`, `simplestaff-frontend`) herunter.
 3. Extrahiert `/imageroot` und die Cockpit-UI (`/ui`).
 4. Führt `create-module/20initialize` aus (erstellt `~/state/postgres_data` und generiert kryptografische Schlüssel für `DATABASE_PASSWORD` und `JWT_SECRET`).
@@ -65,7 +65,7 @@ add-module ghcr.io/bls-isp/ns8-simplestaff:latest 1
 
 ### Alternativ: Konfiguration per CLI
 ```bash
-api-cli run configure-module --agent module/simplestaff1 --data '{
+api-cli run configure-module --agent module/ns8-simplestaff1 --data '{
   "domain_name": "time.bls-isp.net",
   "super_admin_email": "info@bls-isp.net",
   "super_admin_password": "IhrSicheresPasswort",
@@ -82,21 +82,21 @@ api-cli run configure-module --agent module/simplestaff1 --data '{
 ### Status und Logs prüfen:
 ```bash
 # Systemd-Status prüfen
-runagent -m simplestaff1 systemctl --user status simplestaff.service
+runagent -m ns8-simplestaff1 systemctl --user status simplestaff.service
 
 # Laufende Container im Pod prüfen
-runagent -m simplestaff1 podman ps
+runagent -m ns8-simplestaff1 podman ps
 
 # Backend-Logs einsehen
-runagent -m simplestaff1 podman logs --tail 100 simplestaff-backend
+runagent -m ns8-simplestaff1 podman logs --tail 100 simplestaff-backend
 ```
 
 ### Modul auf eine neue Version aktualisieren:
 ```bash
-api-cli run update-module --data '{"module_url":"ghcr.io/bls-isp/ns8-simplestaff:latest","instances":["simplestaff1"],"force":true}'
+api-cli run update-module --data '{"module_url":"ghcr.io/bls-isp/ns8-simplestaff:1.1.2","instances":["ns8-simplestaff1"],"force":true}'
 ```
 
 ### Manuelle Datenbanksicherung (SQL-Dump):
 ```bash
-runagent -m simplestaff1 podman exec simplestaff-db pg_dump -U simplestaff simplestaff > simplestaff_backup_$(date +%F).sql
+runagent -m ns8-simplestaff1 podman exec simplestaff-db pg_dump -U simplestaff simplestaff > simplestaff_backup_$(date +%F).sql
 ```
