@@ -9,14 +9,15 @@
 import json
 import sys
 import os
+import re
 import secrets
+import shutil
 import traceback
 
 def log_error(msg):
     print(f"ERROR: {msg}", file=sys.stderr)
 
 try:
-    # 1. Load agent and tasks libraries
     import agent
     import agent.tasks
 except Exception as e:
@@ -25,33 +26,45 @@ except Exception as e:
     sys.exit(1)
 
 try:
-    # 2. Read JSON payload from stdin
     request = json.load(sys.stdin)
 except Exception as e:
     log_error(f"Failed to parse input JSON from stdin: {e}")
     traceback.print_exc(file=sys.stderr)
     sys.exit(1)
 
-# Log received keys (excluding password values for security)
 received_keys = list(request.keys())
 print(f"Received configuration keys: {received_keys}", file=sys.stderr)
 
 try:
-    # 3. Extract fields
-    domain_name = request.get('domain_name')
-    super_admin_email = request.get('super_admin_email')
-    super_admin_password = request.get('super_admin_password') or os.environ.get('SUPER_ADMIN_PASSWORD', '')
-    lets_encrypt = request.get('lets_encrypt', True)
-    http2https = request.get('http2https', True)
+    # Normalize domain_name (strip http://, https://, paths, and whitespace)
+    raw_domain = (request.get('domain_name') or '').strip()
+    raw_domain = re.sub(r'^https?://', '', raw_domain, flags=re.IGNORECASE)
+    domain_name = raw_domain.split('/')[0].strip().lower()
 
-    smtp_enabled = request.get('smtp_enabled', False)
-    smtp_host = request.get('smtp_host', '')
-    smtp_port = request.get('smtp_port', 587)
-    smtp_user = request.get('smtp_user', '')
-    smtp_password = request.get('smtp_password')
-    if smtp_password is None:
+    super_admin_email = (request.get('super_admin_email') or '').strip()
+
+    # Keep existing password if blank/omitted on subsequent saves
+    req_admin_pw = (request.get('super_admin_password') or '').strip()
+    super_admin_password = req_admin_pw or os.environ.get('SUPER_ADMIN_PASSWORD', '').strip()
+
+    lets_encrypt = bool(request.get('lets_encrypt', True))
+    http2https = bool(request.get('http2https', True))
+
+    smtp_enabled = bool(request.get('smtp_enabled', False))
+    smtp_host = (request.get('smtp_host') or '').strip()
+    try:
+        smtp_port = int(request.get('smtp_port', 587))
+    except (ValueError, TypeError):
+        smtp_port = 587
+    smtp_user = (request.get('smtp_user') or '').strip()
+
+    req_smtp_pw = request.get('smtp_password')
+    if req_smtp_pw is not None and str(req_smtp_pw).strip() != '':
+        smtp_password = str(req_smtp_pw).strip()
+    else:
         smtp_password = os.environ.get('SMTP_PASSWORD', '')
-    smtp_from = request.get('smtp_from', '')
+
+    smtp_from = (request.get('smtp_from') or '').strip()
 
     if not domain_name or not super_admin_email:
         log_error("Missing required configuration fields: domain_name and super_admin_email are required.")
@@ -61,17 +74,18 @@ try:
         log_error("Super admin password is required for initial setup.")
         sys.exit(1)
 
-    # Ensure booleans
-    lets_encrypt = bool(lets_encrypt)
-    http2https = bool(http2https)
-    smtp_enabled = bool(smtp_enabled)
-
-    # 4. Generate/Retrieve secrets
+    # Retrieve or generate secrets & image defaults
     db_password = os.environ.get('DATABASE_PASSWORD', '') or secrets.token_hex(16)
     jwt_secret = os.environ.get('JWT_SECRET', '') or secrets.token_hex(32)
+    postgres_img = os.environ.get('POSTGRES_IMAGE', 'docker.io/library/postgres:15-alpine')
+    backend_img = os.environ.get('SIMPLESTAFF_BACKEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-backend:latest')
+    frontend_img = os.environ.get('SIMPLESTAFF_FRONTEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-frontend:latest')
 
-    # 5. Persist via NS8 agent
+    # Persist via NS8 agent and flush to disk BEFORE 80start_services runs!
     print("Saving configuration to agent environment...", file=sys.stderr)
+    agent.set_env('POSTGRES_IMAGE', postgres_img)
+    agent.set_env('SIMPLESTAFF_BACKEND_IMAGE', backend_img)
+    agent.set_env('SIMPLESTAFF_FRONTEND_IMAGE', frontend_img)
     agent.set_env('DOMAIN_NAME', domain_name)
     agent.set_env('SUPER_ADMIN_EMAIL', super_admin_email)
     agent.set_env('SUPER_ADMIN_PASSWORD', super_admin_password)
@@ -80,31 +94,34 @@ try:
     agent.set_env('LETS_ENCRYPT', str(lets_encrypt))
     agent.set_env('HTTP2HTTPS', str(http2https))
     agent.set_env('SMTP_ENABLED', str(smtp_enabled))
-    agent.set_env('SMTP_HOST', str(smtp_host))
+    agent.set_env('SMTP_HOST', smtp_host)
     agent.set_env('SMTP_PORT', str(smtp_port))
-    agent.set_env('SMTP_USER', str(smtp_user))
-    agent.set_env('SMTP_PASSWORD', str(smtp_password))
-    agent.set_env('SMTP_FROM', str(smtp_from))
+    agent.set_env('SMTP_USER', smtp_user)
+    agent.set_env('SMTP_PASSWORD', smtp_password)
+    agent.set_env('SMTP_FROM', smtp_from)
     agent.set_env('APP_BASE_URL', f"https://{domain_name}")
+    agent.dump_env()
 
-    # 6. Ensure state directories and sync environment file
+    # Ensure state directories and synchronize environment file
     os.makedirs(os.path.expanduser('~/state/postgres_data'), exist_ok=True)
     os.makedirs(os.path.expanduser('~/.config/state'), exist_ok=True)
     try:
-        import shutil
         src_env = os.path.expanduser('~/.config/state/environment')
         dst_env = os.path.expanduser('~/state/environment')
         if os.path.exists(src_env):
             shutil.copy2(src_env, dst_env)
-    except Exception:
-        pass
+    except Exception as copy_err:
+        print(f"Warning: could not copy environment file to ~/state/environment: {copy_err}", file=sys.stderr)
 
-    # 7. Configure Traefik
+    # Configure Traefik route
     module_id = os.environ.get('MODULE_ID')
     tcp_port = os.environ.get('TCP_PORT')
 
-    print(f"Configuring Traefik route for module={module_id} host={domain_name} port={tcp_port} lets_encrypt={lets_encrypt} http2https={http2https}...", file=sys.stderr)
-    
+    print(
+        f"Configuring Traefik route for module={module_id} host={domain_name} port={tcp_port} lets_encrypt={lets_encrypt} http2https={http2https}...",
+        file=sys.stderr,
+    )
+
     if not module_id or not tcp_port:
         log_error(f"Environment variables MODULE_ID ({module_id}) or TCP_PORT ({tcp_port}) are missing!")
         sys.exit(1)
@@ -117,7 +134,7 @@ try:
         action='set-route',
         data={
             'instance': module_id,
-            'url': 'http://127.0.0.1:' + tcp_port,
+            'url': f'http://127.0.0.1:{tcp_port}',
             'host': domain_name,
             'lets_encrypt': lets_encrypt,
             'http2https': http2https,
@@ -126,7 +143,7 @@ try:
 
     exit_code = response.get('exit_code', -1)
     print(f"Traefik set-route completed with exit_code={exit_code}", file=sys.stderr)
-    
+
     if exit_code != 0:
         log_error(f"Traefik set-route action failed. Response output: {response.get('error', response)}")
         sys.exit(1)

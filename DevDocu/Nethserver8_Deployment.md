@@ -1,133 +1,102 @@
-# Nethserver 8 (NS8) – Bereitstellungshandbuch (Deployment Guide)
+# NethServer 8 (NS8) – Bereitstellungshandbuch (Deployment Guide)
 
-Dieses Handbuch beschreibt Schritt für Schritt, wie Sie die **SimpleStaff**-Anwendung als natives, rootless Container-Modul auf Ihrer **Nethserver 8 (NS8)** Produktivumgebung unter der Domain **`time.bls-isp.net`** installieren und aktivieren.
-
----
-
-## 1. Systemarchitektur auf Nethserver 8
-
-SimpleStaff wird auf Nethserver 8 als **Podman-Pod** betrieben. Ein Pod gruppiert Container und teilt sich denselben Netzwerk-Namespace (inkl. `localhost`).
-* **Datenbank:** PostgreSQL 15 (Läuft als Container `simplestaff-db`).
-* **Backend API:** Axum Rust Server (Läuft als Container `simplestaff-backend` auf Port `8080`).
-* **Frontend Proxy:** Nginx Webserver (Läuft als Container `simplestaff-frontend` auf Port `80`).
-* **Ingress:** Nethserver 8 Traefik liest die Container-Labels aus, stellt automatisch ein **Let's Encrypt SSL-Zertifikat** aus und leitet den externen Traffic für `time.bls-isp.net` an den Frontend-Container weiter.
+Dieses Handbuch beschreibt Schritt für Schritt, wie Sie die **SimpleStaff**-Anwendung als natives, rootless Container-Modul inklusive vollwertiger **NethServer 8 Cockpit Admin-Oberfläche** auf Ihrer NethServer 8 Produktivumgebung (z. B. unter **`time.bls-isp.net`**) installieren, konfigurieren und aktualisieren.
 
 ---
 
-## 2. GitHub Actions & private Registry (GHCR)
+## 1. Systemarchitektur auf NethServer 8
 
-Um das Kompilieren und Bereitstellen der Container-Images zu vereinfachen, nutzt dieses Repository einen GitHub Actions Workflow (`.github/workflows/build-and-publish.yml`).
-
-### Funktionsweise:
-1. **Automatischer Build:** Sobald Sie Änderungen in Ihr privates GitHub-Repository auf den Branch `main` pushen, baut GitHub Actions automatisch beide Container-Images (Backend und Frontend) und lädt sie in die **GitHub Container Registry (GHCR)** hoch.
-2. **Image-Pfade:**
-   * Backend: `ghcr.io/bls-isp/simplestaff-backend:latest`
-   * Frontend: `ghcr.io/bls-isp/simplestaff-frontend:latest`
-
-### Authentifizierung auf Nethserver 8:
-Da es sich um ein **privates Repository** handelt, müssen Sie dem Nethserver-Host Leserechte auf die Registry gewähren:
-
-1. **GitHub Personal Access Token (PAT) erstellen:**
-   * Gehen Sie auf GitHub in Ihre Profileinstellungen -> *Developer Settings* -> *Personal Access Tokens* -> *Tokens (classic)*.
-   * Erzeugen Sie einen neuen Token (Klassisch) mit dem Scope **`read:packages`**. Kopieren Sie den Token.
-
-2. **Podman einloggen:**
-   * Loggen Sie sich als **root** auf der Nethserver-Konsole ein.
-   * Führen Sie den Login-Befehl mit der offiziellen Nethserver-Registry-Konfiguration aus:
-     ```bash
-     podman login --authfile=/etc/nethserver/registry.json ghcr.io
-     # Username: BLS-ISP
-     # Password: <Dein GitHub Personal Access Token (PAT)>
-     ```
-
-3. **Berechtigungen vergeben (WICHTIG):**
-   * Damit der spätere rootless Anwendungsbenutzer die Anmeldeinformationen lesen und die Images herunterladen kann, müssen Sie Leserechte vergeben:
-     ```bash
-     chmod -c a+rx /etc/nethserver
-     chmod -c a+r /etc/nethserver/registry.json
-     ```
-   * > [!WARNING]
-     > **WICHTIGER HINWEIS:** Jedes Mal, wenn Sie `podman login` ausführen, setzt Podman die Dateiberechtigungen von `/etc/nethserver/registry.json` aus Sicherheitsgründen automatisch wieder auf `600` (nur für root lesbar) zurück. Sie **müssen** die `chmod`-Befehle nach jedem Login/Änderung zwingend erneut ausführen!
-
-4. **Vorkonfiguration:**
-   * Die Image-Pfade in der Systemd-Konfiguration (`systemd/user/simplestaff.service`) sind bereits fest auf Ihre Organisation `bls-isp` vorkonfiguriert. Es ist keine manuelle Pfad-Anpassung nötig.
+SimpleStaff wird auf NethServer 8 als **rootless Podman-Pod** (`simplestaff-pod`) betrieben, der lokal auf `127.0.0.1:${TCP_PORT}` gebunden ist:
+* **Datenbank (`simplestaff-db`):** PostgreSQL 15 (`docker.io/library/postgres:15-alpine`) mit persistentem Volume unter `~/state/postgres_data` und automatischer `pg_isready`-Readiness-Prüfung vor dem Backend-Start.
+* **Backend API (`simplestaff-backend`):** Rust / Axum Server auf Port `8080` mit automatischer Datenbank-Verbindungs-Retry-Logik, SeaORM-Migrationen und automatischer Synchronisation der Super-Admin-Zugangsdaten aus den NS8-Einstellungen.
+* **Frontend Proxy (`simplestaff-frontend`):** Nginx Webserver auf Port `80` (liefert das Vue 3 SPA aus und leitet `/api/`-Anfragen intern an `127.0.0.1:8080` weiter).
+* **NS8 Cockpit UI (`/ui`):** Native NethServer 8 Carbon-Oberfläche (Status-Dashboard, Domain-/SSL-/Admin-Konfiguration, SMTP-Konfiguration mit Live-Test-E-Mail-Versand).
+* **Ingress (Traefik):** Über die NS8-Action `configure-module` wird die Route automatisch bei `traefik@node` registriert (inkl. optionalem Let's Encrypt SSL-Zertifikat und HTTP→HTTPS-Weiterleitung).
 
 ---
 
-## 3. Modul auf Nethserver 8 installieren (App-Bundle)
+## 2. GitHub Actions & Container Registry (GHCR)
 
-Da wir die App-Struktur in ein Container-Bundle verpackt haben, entfällt das manuelle Anlegen von Benutzern oder Kopieren von Dateien komplett. Nethserver 8 erledigt das automatisch über den `add-module`-Agenten.
+Der Workflow `.github/workflows/build-and-publish.yml` baut und veröffentlicht bei jedem Push auf `main` oder einem Versions-Tag (`v*`) automatisch alle drei Images:
+* **Backend:** `ghcr.io/bls-isp/simplestaff-backend:latest`
+* **Frontend:** `ghcr.io/bls-isp/simplestaff-frontend:latest`
+* **NS8 Modul-Installer:** `ghcr.io/bls-isp/ns8-simplestaff:latest`
 
-Führen Sie als **root-Benutzer** auf dem Nethserver-Host folgenden Befehl aus:
+### Authentifizierung auf NethServer 8 (falls Packages privat sind):
+1. **GitHub Personal Access Token (PAT) erstellen:** Classic Token mit Scope **`read:packages`**.
+2. **Podman auf dem NS8-Host einloggen:**
+   ```bash
+   podman login --authfile=/etc/nethserver/registry.json ghcr.io
+   chmod -c a+rx /etc/nethserver
+   chmod -c a+r /etc/nethserver/registry.json
+   ```
+   > [!WARNING]
+   > Nach jedem `podman login` setzt Podman die Berechtigungen von `/etc/nethserver/registry.json` auf `600` zurück. Führen Sie die beiden `chmod`-Befehle nach jedem Login erneut aus.
+
+---
+
+## 3. Modul auf NethServer 8 installieren
+
+Führen Sie als **root** auf dem NethServer 8 Host folgenden Befehl aus:
 
 ```bash
-# Modul auf Node 1 aus der GitHub Registry erstellen
 add-module ghcr.io/bls-isp/ns8-simplestaff:latest 1
 ```
 
-*Was Nethserver jetzt im Hintergrund tut:*
-* Erstellt den rootless System-User `simplestaff1`.
-* Lädt das Scratch-Image `ns8-simplestaff:latest` herunter.
-* Extrahiert die `imageroot`-Dateistruktur direkt in das Home-Verzeichnis des Benutzers.
-* Registriert die systemd-Dienste und berechtigt die Ausführung.
+*Was NethServer 8 dabei automatisch ausführt:*
+1. Erstellt den rootless Systembenutzer (z. B. `simplestaff1`).
+2. Lädt alle in `org.nethserver.images` definierten Container-Images (`postgres:15-alpine`, `simplestaff-backend`, `simplestaff-frontend`) herunter.
+3. Extrahiert `/imageroot` und die Cockpit-UI (`/ui`).
+4. Führt `create-module/20initialize` aus (erstellt `~/state/postgres_data` und generiert kryptografische Schlüssel für `DATABASE_PASSWORD` und `JWT_SECRET`).
 
 ---
 
-## 4. Konfiguration & Aktivierung
+## 4. Konfiguration über die NethServer 8 Cockpit UI (Empfohlen)
 
-Nach der Installation konfigurieren wir die Umgebungsvariablen (wie Passwörter, Domäne, E-Mail-Adressen). Die Steuerung erfolgt über das Nethserver-Werkzeug `runagent`, welches Befehle sicher im Namespace der App-Instanz (z. B. `simplestaff21`) ausführt:
+1. Öffnen Sie das **NethServer 8 Admin-Panel (Cockpit)** im Browser.
+2. Navigieren Sie links zu **Anwendungen** → **SimpleStaff** → **Einstellungen**.
+3. Tragen Sie unter **Allgemeine Einstellungen & Zugriff** folgende Werte ein:
+   * **Domainname:** z. B. `time.bls-isp.net` (ohne `https://`)
+   * **Super-Admin E-Mail:** z. B. `info@bls-isp.net`
+   * **Super-Admin Passwort:** Mindestens 6 Zeichen (kann später jederzeit über dieses Feld geändert werden)
+   * **Let's Encrypt SSL-Zertifikat** & **HTTP zu HTTPS Weiterleitung**
+4. Optional: Aktivieren Sie **E-Mail & Benachrichtigungen (SMTP)**, tragen Sie Ihre SMTP-Zugangsdaten ein und prüfen Sie die Verbindung direkt mit dem Button **„Test-E-Mail senden“** (funktioniert sofort mit den eingegebenen Daten, auch vor dem Speichern).
+5. Klicken Sie auf **„Änderungen speichern“**.
 
-1. **Konfigurationsskript ausführen (JSON übergeben):**
-   Geben Sie die Ziel-Domain `time.bls-isp.net` und die Admin-Daten an. Sichere Datenbankpasswörter und Verschlüsselungs-Schlüssel werden automatisch erzeugt.
-   ```bash
-   echo '{"domain_name":"time.bls-isp.net", "super_admin_email":"admin@test.local", "super_admin_password":"admin123"}' | runagent -m simplestaff21 .config/actions/configure-module
-   ```
-
-2. **Dienst starten (falls nicht bereits aktiv):**
-   ```bash
-   runagent -m simplestaff21 systemctl --user enable --now simplestaff.service
-   ```
-
-3. **Status und Logs einsehen:**
-   ```bash
-   # Systemd-Status der App prüfen:
-   runagent -m simplestaff21 systemctl --user status simplestaff.service
-   
-   # Container-Status prüfen:
-   runagent -m simplestaff21 podman ps
-   ```
-
-4. **SSL & Ingress:**
-   Der Nethserver-Traefik-Proxy erkennt die Labels des Containers `simplestaff-frontend` und fordert automatisch ein kostenloses SSL-Zertifikat (Let's Encrypt) für **`https://time.bls-isp.net`** an. Die App ist direkt im Web erreichbar.
-
----
-
-## 5. Demo-Zugang aktivieren (Postgres Seeding)
-
-Um die Demo-Zugangsdaten (Manager und Mitarbeiter) auf der Loginseite der App freizuschalten, führen Sie das Seeding-Tool im laufenden Backend-Container aus:
-
+### Alternativ: Konfiguration per CLI
 ```bash
-# Seeding-Binary über runagent im Backend-Container starten
-runagent -m simplestaff21 podman exec simplestaff-backend /app/seed_demo
+api-cli run configure-module --agent module/simplestaff1 --data '{
+  "domain_name": "time.bls-isp.net",
+  "super_admin_email": "info@bls-isp.net",
+  "super_admin_password": "IhrSicheresPasswort",
+  "lets_encrypt": true,
+  "http2https": true,
+  "smtp_enabled": false
+}'
 ```
 
-### Logins auf `time.bls-isp.net`:
-* **Manager-Zugang:** `admin@test.local` (Passwort: `admin123`)
-* **Mitarbeiter-Zugang:** `peter@test.local` (Passwort: `start123`)
-
 ---
 
-## 6. Backups & Modul-Updates
+## 5. Status prüfen, Updates & Backups
 
-* **Daten-Backup:** Der persistente Zustand (Datenbank-Dateien und Konfigurationsumgebung) liegt im Ordner der Instanz (z. B. `/home/simplestaff21/.config/state/` bzw. `/var/lib/nethserver/simplestaff21/state/`). Dieser wird automatisch durch die Standard-Datensicherung von Nethserver 8 erfasst.
-* **Manuelle Datenbanksicherung (SQL-Dump):**
-  ```bash
-  runagent -m simplestaff21 podman exec simplestaff-db pg_dump -U simplestaff simplestaff > simplestaff21_backup_$(date +%F).sql
-  ```
-* **Modul aktualisieren:** 
-  Wenn Sie Änderungen in GitHub pushen und GitHub Actions neue Images baut, aktualisieren Sie die Container auf dem Nethserver einfach über:
-  ```bash
-  runagent -m simplestaff21 systemctl --user restart simplestaff.service
-  ```
-  Oder über das NethServer 8 Software Center / `update-module`.
+### Status und Logs prüfen:
+```bash
+# Systemd-Status prüfen
+runagent -m simplestaff1 systemctl --user status simplestaff.service
 
+# Laufende Container im Pod prüfen
+runagent -m simplestaff1 podman ps
+
+# Backend-Logs einsehen
+runagent -m simplestaff1 podman logs --tail 100 simplestaff-backend
+```
+
+### Modul auf eine neue Version aktualisieren:
+```bash
+api-cli run update-module --data '{"module_url":"ghcr.io/bls-isp/ns8-simplestaff:latest","instances":["simplestaff1"],"force":true}'
+```
+
+### Manuelle Datenbanksicherung (SQL-Dump):
+```bash
+runagent -m simplestaff1 podman exec simplestaff-db pg_dump -U simplestaff simplestaff > simplestaff_backup_$(date +%F).sql
+```

@@ -1,10 +1,11 @@
 # ============================================
-# SimpleStaff - Nethserver 8 Systemd Service
+# SimpleStaff - NethServer 8 Systemd Service
 # ============================================
 
 [Unit]
 Description=SimpleStaff Application Pod
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -12,33 +13,44 @@ EnvironmentFile=-%h/state/environment
 EnvironmentFile=-%S/state/environment
 Restart=always
 RestartSec=5
+TimeoutStartSec=300
+TimeoutStopSec=30
 
-# Clean up any existing pod/containers
+# Ensure persistent PostgreSQL data directory exists
+ExecStartPre=/bin/mkdir -p %h/state/postgres_data
+
+# Clean up any leftover pod or containers from previous runs
 ExecStartPre=-/usr/bin/podman pod rm -f simplestaff-pod
 ExecStartPre=-/usr/bin/podman rm -f simplestaff-db simplestaff-backend simplestaff-frontend
 
-# Create shared Podman Pod (TCP_PORT is assigned by NS8 core)
-ExecStartPre=/usr/bin/podman pod create --name simplestaff-pod -p ${TCP_PORT}:80
+# Create shared Podman Pod bound to localhost (Traefik proxies HTTPS -> 127.0.0.1:${TCP_PORT})
+ExecStartPre=/usr/bin/podman pod create --name simplestaff-pod -p 127.0.0.1:${TCP_PORT}:80
 
-# Start 1. PostgreSQL Database Container
+# 1. Start PostgreSQL Database Container
 ExecStartPre=/usr/bin/podman run -d --pod simplestaff-pod --name simplestaff-db \
+  --restart=on-failure \
+  --pull=missing \
   -e POSTGRES_USER=simplestaff \
   -e POSTGRES_PASSWORD=${DATABASE_PASSWORD} \
   -e POSTGRES_DB=simplestaff \
   -v %h/state/postgres_data:/var/lib/postgresql/data:Z \
   ${POSTGRES_IMAGE}
 
-# Start 2. Rust Backend API Container
+# Wait until PostgreSQL is ready to accept connections (up to 30s)
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do /usr/bin/podman exec simplestaff-db pg_isready -U simplestaff -d simplestaff >/dev/null 2>&1 && exit 0; sleep 1; done; exit 0'
+
+# 2. Start Rust Backend API Container
 ExecStartPre=/usr/bin/podman run -d --pod simplestaff-pod --name simplestaff-backend \
-  --pull=always \
+  --restart=on-failure \
+  --pull=missing \
   -e DATABASE_URL=postgres://simplestaff:${DATABASE_PASSWORD}@127.0.0.1:5432/simplestaff \
   -e JWT_SECRET=${JWT_SECRET} \
   -e SERVER_HOST=0.0.0.0 \
   -e SERVER_PORT=8080 \
   -e SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL} \
   -e SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD} \
-  -e SUPER_ADMIN_TENANT_NAME="SimpleStaff" \
-  -e SUPER_ADMIN_TENANT_SLUG="simplestaff" \
+  -e SUPER_ADMIN_TENANT_NAME=SimpleStaff \
+  -e SUPER_ADMIN_TENANT_SLUG=simplestaff \
   -e SMTP_ENABLED=${SMTP_ENABLED} \
   -e SMTP_HOST=${SMTP_HOST} \
   -e SMTP_PORT=${SMTP_PORT} \
@@ -48,14 +60,15 @@ ExecStartPre=/usr/bin/podman run -d --pod simplestaff-pod --name simplestaff-bac
   -e APP_BASE_URL=${APP_BASE_URL} \
   ${SIMPLESTAFF_BACKEND_IMAGE}
 
-# Start 3. Nginx Frontend Container (Foreground process for Systemd lifecycle tracking)
-ExecStart=/usr/bin/podman run --pod simplestaff-pod --name simplestaff-frontend \
-  --pull=always \
+# 3. Start Nginx Frontend Container (Foreground process for Systemd lifecycle tracking)
+ExecStart=/usr/bin/podman run --rm --pod simplestaff-pod --name simplestaff-frontend \
+  --pull=missing \
   ${SIMPLESTAFF_FRONTEND_IMAGE}
 
 # Stop & Cleanup on service stop
-ExecStop=/usr/bin/podman pod stop simplestaff-pod
-ExecStopPost=/usr/bin/podman pod rm -f simplestaff-pod
+ExecStop=-/usr/bin/podman pod stop -t 10 simplestaff-pod
+ExecStopPost=-/usr/bin/podman pod rm -f simplestaff-pod
+ExecStopPost=-/usr/bin/podman rm -f simplestaff-db simplestaff-backend simplestaff-frontend
 
 [Install]
 WantedBy=default.target

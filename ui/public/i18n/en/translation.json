@@ -70,11 +70,12 @@
     "smtp_user": "SMTP Username",
     "smtp_user_placeholder": "e.g. user@example.com",
     "smtp_password": "SMTP Password",
-    "smtp_password_placeholder": "Password for SMTP mail delivery (leave empty to keep unchanged)",
+    "smtp_password_placeholder": "Password for SMTP mail delivery",
+    "smtp_password_existing": "Unchanged (leave empty)",
     "smtp_from": "Sender Address (From)",
     "smtp_from_placeholder": "e.g. SimpleStaff <noreply@example.com> or SimpleStaff",
     "send_test_email": "Send Test Email",
-    "send_test_email_hint": "Sends a test email to {email}",
+    "send_test_email_hint": "Immediately sends a test email to {email}",
     "test_email_sent": "Test email was successfully sent to {email}!",
     "test_email_failed": "Failed to send test email.",
     "enabled": "Enabled",
@@ -97,9 +98,15 @@
     "configure-module": "Configure Module",
     "get-status": "Get Status",
     "get-name": "Get Instance Name",
-    "send-test-email": "Send Test Email"
+    "send-test-email": "Send Test Email",
+    "list-installed-modules": "List Installed Modules"
+  },
+  "task": {
+    "cannot_create_task": "Cannot create task {action}"
   },
   "error": {
-    "generic_error": "An unexpected error occurred."
+    "generic_error": "An unexpected error occurred.",
+    "cannot_retrieve_installed_modules": "Cannot retrieve installed modules",
+    "cannot_retrieve_module_info": "Cannot retrieve module info"
   }
 }

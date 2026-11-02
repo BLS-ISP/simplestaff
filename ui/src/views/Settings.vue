@@ -14,7 +14,7 @@
 
     <!-- Error on Get Configuration -->
     <cv-row v-if="error.getConfiguration">
-      <cv-column>
+      <cv-column class="form-column">
         <NsInlineNotification
           kind="error"
           :title="$t('action.get-configuration')"
@@ -28,15 +28,18 @@
     <cv-row>
       <cv-column class="form-column">
         <cv-form @submit.prevent="configureModule">
-          
           <!-- Card 1: Domain & Administrator Settings -->
           <cv-tile light class="settings-card">
             <div class="card-header">
               <div class="card-title-group">
                 <Globe20 class="card-icon" />
                 <div>
-                  <h4 class="card-title">{{ $t("settings.general_section") }}</h4>
-                  <span class="card-desc">{{ $t("settings.general_section_desc") }}</span>
+                  <h4 class="card-title">
+                    {{ $t("settings.general_section") }}
+                  </h4>
+                  <span class="card-desc">{{
+                    $t("settings.general_section_desc")
+                  }}</span>
                 </div>
               </div>
             </div>
@@ -66,7 +69,11 @@
                 :label="$t('settings.super_admin_password')"
                 v-model="superAdminPassword"
                 type="password"
-                :placeholder="isAlreadyConfigured ? $t('settings.super_admin_password_existing') : $t('settings.super_admin_password_placeholder')"
+                :placeholder="
+                  isAlreadyConfigured
+                    ? $t('settings.super_admin_password_existing')
+                    : $t('settings.super_admin_password_placeholder')
+                "
                 :disabled="loading.getConfiguration || loading.configureModule"
                 :invalid-message="error.superAdminPassword"
                 ref="superAdminPassword"
@@ -78,26 +85,42 @@
                   <cv-toggle
                     :label="$t('settings.lets_encrypt')"
                     v-model="letsEncrypt"
-                    :disabled="loading.getConfiguration || loading.configureModule"
+                    :disabled="
+                      loading.getConfiguration || loading.configureModule
+                    "
                     value="letsEncryptToggle"
                   >
-                    <template slot="text-left">{{ $t("settings.disabled") }}</template>
-                    <template slot="text-right">{{ $t("settings.enabled") }}</template>
+                    <template slot="text-left">{{
+                      $t("settings.disabled")
+                    }}</template>
+                    <template slot="text-right">{{
+                      $t("settings.enabled")
+                    }}</template>
                   </cv-toggle>
-                  <div class="toggle-helper">{{ $t("settings.lets_encrypt_helper") }}</div>
+                  <div class="toggle-helper">
+                    {{ $t("settings.lets_encrypt_helper") }}
+                  </div>
                 </div>
 
                 <div class="toggle-card">
                   <cv-toggle
                     :label="$t('settings.http2https')"
                     v-model="http2https"
-                    :disabled="loading.getConfiguration || loading.configureModule"
+                    :disabled="
+                      loading.getConfiguration || loading.configureModule
+                    "
                     value="http2httpsToggle"
                   >
-                    <template slot="text-left">{{ $t("settings.disabled") }}</template>
-                    <template slot="text-right">{{ $t("settings.enabled") }}</template>
+                    <template slot="text-left">{{
+                      $t("settings.disabled")
+                    }}</template>
+                    <template slot="text-right">{{
+                      $t("settings.enabled")
+                    }}</template>
                   </cv-toggle>
-                  <div class="toggle-helper">{{ $t("settings.http2https_helper") }}</div>
+                  <div class="toggle-helper">
+                    {{ $t("settings.http2https_helper") }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -110,7 +133,9 @@
                 <Email20 class="card-icon" />
                 <div>
                   <h4 class="card-title">{{ $t("settings.smtp_section") }}</h4>
-                  <span class="card-desc">{{ $t("settings.smtp_section_desc") }}</span>
+                  <span class="card-desc">{{
+                    $t("settings.smtp_section_desc")
+                  }}</span>
                 </div>
               </div>
             </div>
@@ -120,23 +145,33 @@
                 <cv-toggle
                   :label="$t('settings.smtp_enabled')"
                   v-model="smtpEnabled"
-                  :disabled="loading.getConfiguration || loading.configureModule"
+                  :disabled="
+                    loading.getConfiguration || loading.configureModule
+                  "
                   value="smtpEnabledToggle"
                 >
-                  <template slot="text-left">{{ $t("settings.disabled") }}</template>
-                  <template slot="text-right">{{ $t("settings.enabled") }}</template>
+                  <template slot="text-left">{{
+                    $t("settings.disabled")
+                  }}</template>
+                  <template slot="text-right">{{
+                    $t("settings.enabled")
+                  }}</template>
                 </cv-toggle>
-                <div class="toggle-helper">{{ $t("settings.smtp_enabled_helper") }}</div>
+                <div class="toggle-helper">
+                  {{ $t("settings.smtp_enabled_helper") }}
+                </div>
               </div>
 
-              <!-- Collapsible SMTP Fields with Transition -->
+              <!-- Collapsible SMTP Fields -->
               <div v-if="smtpEnabled" class="smtp-expanded-box">
                 <div class="fields-row-2">
                   <cv-text-input
                     :label="$t('settings.smtp_host')"
                     v-model="smtpHost"
                     :placeholder="$t('settings.smtp_host_placeholder')"
-                    :disabled="loading.getConfiguration || loading.configureModule"
+                    :disabled="
+                      loading.getConfiguration || loading.configureModule
+                    "
                     :invalid-message="error.smtpHost"
                     ref="smtpHost"
                     class="field-item"
@@ -147,7 +182,9 @@
                     v-model="smtpPort"
                     type="number"
                     :placeholder="$t('settings.smtp_port_placeholder')"
-                    :disabled="loading.getConfiguration || loading.configureModule"
+                    :disabled="
+                      loading.getConfiguration || loading.configureModule
+                    "
                     :invalid-message="error.smtpPort"
                     ref="smtpPort"
                     class="field-item"
@@ -159,7 +196,9 @@
                     :label="$t('settings.smtp_user')"
                     v-model="smtpUser"
                     :placeholder="$t('settings.smtp_user_placeholder')"
-                    :disabled="loading.getConfiguration || loading.configureModule"
+                    :disabled="
+                      loading.getConfiguration || loading.configureModule
+                    "
                     :invalid-message="error.smtpUser"
                     ref="smtpUser"
                     class="field-item"
@@ -169,8 +208,14 @@
                     :label="$t('settings.smtp_password')"
                     v-model="smtpPassword"
                     type="password"
-                    :placeholder="$t('settings.smtp_password_placeholder')"
-                    :disabled="loading.getConfiguration || loading.configureModule"
+                    :placeholder="
+                      hasSmtpPassword
+                        ? $t('settings.smtp_password_existing')
+                        : $t('settings.smtp_password_placeholder')
+                    "
+                    :disabled="
+                      loading.getConfiguration || loading.configureModule
+                    "
                     :invalid-message="error.smtpPassword"
                     ref="smtpPassword"
                     class="field-item"
@@ -181,11 +226,31 @@
                   :label="$t('settings.smtp_from')"
                   v-model="smtpFrom"
                   :placeholder="$t('settings.smtp_from_placeholder')"
-                  :disabled="loading.getConfiguration || loading.configureModule"
+                  :disabled="
+                    loading.getConfiguration || loading.configureModule
+                  "
                   :invalid-message="error.smtpFrom"
                   ref="smtpFrom"
                   class="field-item"
                 ></cv-text-input>
+
+                <!-- Test Email Result Notification -->
+                <NsInlineNotification
+                  v-if="testEmailSuccess"
+                  kind="success"
+                  :title="$t('action.send-test-email')"
+                  :description="testEmailSuccess"
+                  :showCloseButton="true"
+                  @close="testEmailSuccess = ''"
+                />
+                <NsInlineNotification
+                  v-if="error.sendTestEmail"
+                  kind="error"
+                  :title="$t('action.send-test-email')"
+                  :description="error.sendTestEmail"
+                  :showCloseButton="true"
+                  @close="error.sendTestEmail = ''"
+                />
 
                 <div class="smtp-test-box">
                   <NsButton
@@ -193,19 +258,41 @@
                     :icon="Send20"
                     size="small"
                     :loading="loading.sendTestEmail"
-                    :disabled="loading.getConfiguration || loading.configureModule || loading.sendTestEmail || !smtpHost"
+                    :disabled="
+                      loading.getConfiguration ||
+                      loading.configureModule ||
+                      loading.sendTestEmail ||
+                      !smtpHost.trim() ||
+                      !superAdminEmail.trim()
+                    "
                     @click.prevent="sendTestEmail"
                     class="test-email-btn"
                   >
                     {{ $t("settings.send_test_email") }}
                   </NsButton>
-                  <span class="test-email-hint">{{ $t("settings.send_test_email_hint", { email: superAdminEmail }) }}</span>
+                  <span class="test-email-hint">
+                    {{
+                      $t("settings.send_test_email_hint", {
+                        email: superAdminEmail || "-",
+                      })
+                    }}
+                  </span>
                 </div>
               </div>
             </div>
           </cv-tile>
 
-          <!-- Error Notification on Save -->
+          <!-- Save Success / Error Notification -->
+          <div v-if="saveSuccess" class="error-wrapper">
+            <NsInlineNotification
+              kind="success"
+              :title="$t('settings.title')"
+              :description="saveSuccess"
+              :showCloseButton="true"
+              @close="saveSuccess = ''"
+            />
+          </div>
+
           <div v-if="error.configureModule" class="error-wrapper">
             <NsInlineNotification
               kind="error"
@@ -227,7 +314,6 @@
               {{ $t("settings.save") }}
             </NsButton>
           </div>
-
         </cv-form>
       </cv-column>
     </cv-row>
@@ -279,12 +365,15 @@ export default {
       letsEncrypt: true,
       http2https: true,
       isAlreadyConfigured: false,
+      hasSmtpPassword: false,
       smtpEnabled: false,
       smtpHost: "",
       smtpPort: "587",
       smtpUser: "",
       smtpPassword: "",
       smtpFrom: "",
+      saveSuccess: "",
+      testEmailSuccess: "",
       loading: {
         getConfiguration: false,
         configureModule: false,
@@ -320,6 +409,14 @@ export default {
     next();
   },
   methods: {
+    normalizeDomain(raw) {
+      return (raw || "")
+        .trim()
+        .replace(/^https?:\/\//i, "")
+        .split("/")[0]
+        .trim()
+        .toLowerCase();
+    },
     async getConfiguration() {
       this.loading.getConfiguration = true;
       this.error.getConfiguration = "";
@@ -365,9 +462,10 @@ export default {
       if (config) {
         this.domainName = config.domain_name || "";
         this.superAdminEmail = config.super_admin_email || "";
-        if (config.domain_name) {
-          this.isAlreadyConfigured = true;
-        }
+        this.isAlreadyConfigured = Boolean(
+          config.is_configured || config.domain_name
+        );
+        this.hasSmtpPassword = Boolean(config.has_smtp_password);
         if (config.lets_encrypt !== undefined) {
           this.letsEncrypt = Boolean(config.lets_encrypt);
         }
@@ -387,19 +485,20 @@ export default {
     validate() {
       let isValidationOk = true;
 
-      // Reset errors
       this.error.domainName = "";
       this.error.superAdminEmail = "";
       this.error.superAdminPassword = "";
       this.error.smtpHost = "";
       this.error.smtpPort = "";
 
-      if (!this.domainName.trim()) {
+      this.domainName = this.normalizeDomain(this.domainName);
+
+      if (!this.domainName) {
         this.error.domainName = this.$t("common.required");
         isValidationOk = false;
       }
 
-      if (!this.superAdminEmail.trim()) {
+      if (!this.superAdminEmail.trim() || !this.superAdminEmail.includes("@")) {
         this.error.superAdminEmail = this.$t("common.required");
         isValidationOk = false;
       }
@@ -409,8 +508,13 @@ export default {
         isValidationOk = false;
       }
 
-      if (this.superAdminPassword.trim() && this.superAdminPassword.length < 6) {
-        this.error.superAdminPassword = this.$t("settings.super_admin_password_placeholder");
+      if (
+        this.superAdminPassword.trim() &&
+        this.superAdminPassword.length < 6
+      ) {
+        this.error.superAdminPassword = this.$t(
+          "settings.super_admin_password_placeholder"
+        );
         isValidationOk = false;
       }
 
@@ -419,7 +523,7 @@ export default {
           this.error.smtpHost = this.$t("common.required");
           isValidationOk = false;
         }
-        if (!this.smtpPort.trim()) {
+        if (!String(this.smtpPort).trim()) {
           this.error.smtpPort = this.$t("common.required");
           isValidationOk = false;
         }
@@ -428,6 +532,7 @@ export default {
       return isValidationOk;
     },
     async configureModule() {
+      this.saveSuccess = "";
       if (!this.validate()) {
         return;
       }
@@ -448,7 +553,7 @@ export default {
       );
 
       const payload = {
-        domain_name: this.domainName.trim(),
+        domain_name: this.domainName,
         super_admin_email: this.superAdminEmail.trim(),
         lets_encrypt: Boolean(this.letsEncrypt),
         http2https: Boolean(this.http2https),
@@ -469,7 +574,9 @@ export default {
           action: taskAction,
           data: payload,
           extra: {
-            title: this.$t("action." + taskAction),
+            title: this.$t("settings.configure_instance", {
+              instance: this.instanceName,
+            }),
             description: this.$t("common.processing"),
             eventId,
           },
@@ -480,29 +587,31 @@ export default {
       if (err) {
         console.error(`error creating task ${taskAction}`, err);
         this.error.configureModule = this.getErrorMessage(err);
+        this.createErrorNotificationForApp(
+          err,
+          this.$t("task.cannot_create_task", { action: taskAction })
+        );
         this.loading.configureModule = false;
         return;
       }
     },
     configureModuleAborted(taskResult, taskContext) {
       console.error(`${taskContext.action} aborted`, taskResult);
-      this.error.configureModule = this.$t("error.generic_error");
+      this.error.configureModule =
+        (taskResult && taskResult.error) || this.$t("error.generic_error");
       this.loading.configureModule = false;
     },
     configureModuleCompleted() {
       this.loading.configureModule = false;
       this.superAdminPassword = "";
       this.smtpPassword = "";
-
-      this.createSuccessNotificationForApp(
-        this.$t("settings.saved_successfully")
-      );
-
+      this.saveSuccess = this.$t("settings.saved_successfully");
       this.getConfiguration();
     },
     async sendTestEmail() {
       this.loading.sendTestEmail = true;
       this.error.sendTestEmail = "";
+      this.testEmailSuccess = "";
       const taskAction = "send-test-email";
       const eventId = this.getUuid();
 
@@ -520,7 +629,12 @@ export default {
         this.createModuleTaskForApp(this.instanceName, {
           action: taskAction,
           data: {
-            to: this.superAdminEmail,
+            to: this.superAdminEmail.trim(),
+            smtp_host: this.smtpHost.trim(),
+            smtp_port: parseInt(this.smtpPort, 10) || 587,
+            smtp_user: this.smtpUser.trim(),
+            smtp_password: this.smtpPassword,
+            smtp_from: this.smtpFrom.trim(),
           },
           extra: {
             title: this.$t("action." + taskAction),
@@ -532,16 +646,20 @@ export default {
 
       if (err) {
         this.loading.sendTestEmail = false;
+        const msg =
+          this.getErrorMessage(err) || this.$t("settings.test_email_failed");
+        this.error.sendTestEmail = msg;
         this.createErrorNotificationForApp(
-          this.getErrorMessage(err) || this.$t("settings.test_email_failed")
+          err,
+          this.$t("task.cannot_create_task", { action: taskAction })
         );
       }
     },
     sendTestEmailCompleted() {
       this.loading.sendTestEmail = false;
-      this.createSuccessNotificationForApp(
-        this.$t("settings.test_email_sent", { email: this.superAdminEmail })
-      );
+      this.testEmailSuccess = this.$t("settings.test_email_sent", {
+        email: this.superAdminEmail,
+      });
     },
     sendTestEmailAborted(taskResult) {
       this.loading.sendTestEmail = false;
@@ -549,7 +667,7 @@ export default {
         taskResult && taskResult.error
           ? taskResult.error
           : this.$t("settings.test_email_failed");
-      this.createErrorNotificationForApp(errorMsg);
+      this.error.sendTestEmail = errorMsg;
     },
   },
 };
@@ -586,7 +704,7 @@ export default {
 }
 
 .form-column {
-  max-width: 54rem; // 864px max width for optimal readability
+  max-width: 54rem;
 }
 
 .settings-card {

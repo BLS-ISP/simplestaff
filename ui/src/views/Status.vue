@@ -15,15 +15,24 @@
               </div>
               <div class="hero-details">
                 <div class="hero-title-row">
-                  <h2 class="hero-title">SimpleStaff</h2>
-                  <span class="hero-badge">v1.0.5</span>
-                  <span class="status-pill" :class="isOverallActive ? 'active' : 'inactive'">
+                  <h2 class="hero-title">
+                    {{ instanceLabel || "SimpleStaff" }}
+                  </h2>
+                  <span class="hero-badge">NS8 Module</span>
+                  <span
+                    class="status-pill"
+                    :class="isOverallActive ? 'active' : 'inactive'"
+                  >
                     <span class="status-dot"></span>
-                    {{ isOverallActive ? $t('status.running') : $t('status.stopped') }}
+                    {{
+                      isOverallActive
+                        ? $t("status.running")
+                        : $t("status.stopped")
+                    }}
                   </span>
                 </div>
                 <p class="hero-subtitle">
-                  {{ $t('status.hero_description') }}
+                  {{ $t("status.hero_description") }}
                 </p>
               </div>
             </div>
@@ -35,7 +44,7 @@
                 @click="openAppUrl"
                 class="hero-btn"
               >
-                {{ $t('status.open_app') }}
+                {{ $t("status.open_app") }}
               </cv-button>
               <cv-button
                 v-else
@@ -44,7 +53,7 @@
                 @click="goToAppPage(instanceName, 'settings')"
                 class="hero-btn"
               >
-                {{ $t('status.configure') }}
+                {{ $t("status.configure") }}
               </cv-button>
             </div>
           </div>
@@ -88,7 +97,11 @@
       <cv-column :sm="4" :md="4" :lg="4">
         <NsInfoCard
           light
-          :title="configuration.lets_encrypt ? $t('status.ssl_active') : $t('status.ssl_inactive')"
+          :title="
+            configuration.lets_encrypt
+              ? $t('status.ssl_active')
+              : $t('status.ssl_inactive')
+          "
           :description="$t('status.ssl_certificate')"
           :icon="Locked32"
           :loading="loading.getConfiguration"
@@ -143,7 +156,7 @@
                 @click="goToBackupPage"
                 class="ghost-action"
               >
-                {{ $t('status.view_backups') }}
+                {{ $t("status.view_backups") }}
               </NsButton>
             </div>
           </template>
@@ -162,7 +175,9 @@
           <template slot="content">
             <div class="card-inner-details">
               <span class="logs-hint-text">
-                {{ $t('status.logs_instance_hint', { instance: instanceName }) }}
+                {{
+                  $t("status.logs_instance_hint", { instance: instanceName })
+                }}
               </span>
               <NsButton
                 kind="ghost"
@@ -170,7 +185,7 @@
                 @click="goToLogsPage"
                 class="ghost-action"
               >
-                {{ $t('status.view_logs') }}
+                {{ $t("status.view_logs") }}
               </NsButton>
             </div>
           </template>
@@ -183,7 +198,9 @@
       <cv-column>
         <div class="section-header">
           <h4 class="section-heading">{{ $tc("status.services", 2) }}</h4>
-          <span class="section-subheading">{{ $t("status.services_desc") }}</span>
+          <span class="section-subheading">{{
+            $t("status.services_desc")
+          }}</span>
         </div>
 
         <cv-tile light class="table-card">
@@ -194,8 +211,12 @@
             />
             <cv-structured-list v-else class="status-list">
               <template slot="headings">
-                <cv-structured-list-heading>{{ $t("status.name") }}</cv-structured-list-heading>
-                <cv-structured-list-heading>{{ $t("status.status") }}</cv-structured-list-heading>
+                <cv-structured-list-heading>{{
+                  $t("status.name")
+                }}</cv-structured-list-heading>
+                <cv-structured-list-heading>{{
+                  $t("status.status")
+                }}</cv-structured-list-heading>
               </template>
               <template slot="items">
                 <cv-structured-list-item
@@ -208,17 +229,34 @@
                   <cv-structured-list-data>
                     <span
                       class="service-pill"
-                      :class="service.active ? 'active' : (service.failed ? 'failed' : 'inactive')"
+                      :class="
+                        service.active
+                          ? 'active'
+                          : service.failed
+                          ? 'failed'
+                          : 'inactive'
+                      "
                     >
                       <span class="service-dot"></span>
-                      {{ service.status }}
+                      {{
+                        service.status ||
+                        (service.active
+                          ? $t("status.running")
+                          : service.failed
+                          ? "failed"
+                          : $t("status.stopped"))
+                      }}
                     </span>
                   </cv-structured-list-data>
                 </cv-structured-list-item>
               </template>
             </cv-structured-list>
           </div>
-          <cv-skeleton-text v-else :paragraph="true" :line-count="4"></cv-skeleton-text>
+          <cv-skeleton-text
+            v-else
+            :paragraph="true"
+            :line-count="4"
+          ></cv-skeleton-text>
         </cv-tile>
       </cv-column>
     </cv-row>
@@ -239,20 +277,28 @@
             />
             <cv-structured-list v-else class="status-list">
               <template slot="headings">
-                <cv-structured-list-heading>{{ $t("status.name") }}</cv-structured-list-heading>
-                <cv-structured-list-heading>{{ $t("status.size") }}</cv-structured-list-heading>
-                <cv-structured-list-heading>{{ $t("status.created") }}</cv-structured-list-heading>
+                <cv-structured-list-heading>{{
+                  $t("status.name")
+                }}</cv-structured-list-heading>
+                <cv-structured-list-heading>{{
+                  $t("status.size")
+                }}</cv-structured-list-heading>
+                <cv-structured-list-heading>{{
+                  $t("status.created")
+                }}</cv-structured-list-heading>
               </template>
               <template slot="items">
                 <cv-structured-list-item
                   v-for="(image, index) in status.images"
                   :key="index"
                 >
-                  <cv-structured-list-data class="name-cell font-mono break-word">
+                  <cv-structured-list-data
+                    class="name-cell font-mono break-word"
+                  >
                     {{ image.name }}
                   </cv-structured-list-data>
                   <cv-structured-list-data class="size-cell">
-                    {{ image.size }}
+                    {{ image.size | byteFormat }}
                   </cv-structured-list-data>
                   <cv-structured-list-data class="date-cell">
                     {{ image.created }}
@@ -261,7 +307,11 @@
               </template>
             </cv-structured-list>
           </div>
-          <cv-skeleton-text v-else :paragraph="true" :line-count="3"></cv-skeleton-text>
+          <cv-skeleton-text
+            v-else
+            :paragraph="true"
+            :line-count="3"
+          ></cv-skeleton-text>
         </cv-tile>
       </cv-column>
     </cv-row>
@@ -271,7 +321,9 @@
       <cv-column>
         <div class="section-header">
           <h4 class="section-heading">{{ $tc("status.app_volumes", 2) }}</h4>
-          <span class="section-subheading">{{ $t("status.volumes_desc") }}</span>
+          <span class="section-subheading">{{
+            $t("status.volumes_desc")
+          }}</span>
         </div>
 
         <cv-tile light class="table-card">
@@ -282,9 +334,15 @@
             />
             <cv-structured-list v-else class="status-list">
               <template slot="headings">
-                <cv-structured-list-heading>{{ $t("status.name") }}</cv-structured-list-heading>
-                <cv-structured-list-heading>{{ $t("status.mount") }}</cv-structured-list-heading>
-                <cv-structured-list-heading>{{ $t("status.size") }}</cv-structured-list-heading>
+                <cv-structured-list-heading>{{
+                  $t("status.name")
+                }}</cv-structured-list-heading>
+                <cv-structured-list-heading>{{
+                  $t("status.mount")
+                }}</cv-structured-list-heading>
+                <cv-structured-list-heading>{{
+                  $t("status.created")
+                }}</cv-structured-list-heading>
               </template>
               <template slot="items">
                 <cv-structured-list-item
@@ -294,7 +352,9 @@
                   <cv-structured-list-data class="name-cell font-mono">
                     {{ volume.name }}
                   </cv-structured-list-data>
-                  <cv-structured-list-data class="mount-cell font-mono break-word">
+                  <cv-structured-list-data
+                    class="mount-cell font-mono break-word"
+                  >
                     {{ volume.mount }}
                   </cv-structured-list-data>
                   <cv-structured-list-data class="size-cell">
@@ -304,11 +364,14 @@
               </template>
             </cv-structured-list>
           </div>
-          <cv-skeleton-text v-else :paragraph="true" :line-count="2"></cv-skeleton-text>
+          <cv-skeleton-text
+            v-else
+            :paragraph="true"
+            :line-count="2"
+          ></cv-skeleton-text>
         </cv-tile>
       </cv-column>
     </cv-row>
-
   </cv-grid>
 </template>
 
@@ -335,6 +398,7 @@ export default {
   name: "Status",
   components: {
     Application32,
+    Launch20,
   },
   mixins: [
     TaskService,
@@ -388,9 +452,9 @@ export default {
     ...mapState(["instanceName", "instanceLabel", "core", "appName"]),
     isOverallActive() {
       if (!this.status.services || this.status.services.length === 0) {
-        return true;
+        return false;
       }
-      return this.status.services.some((s) => s.active);
+      return this.status.services.every((s) => s.active);
     },
     installationNodeTitle() {
       if (this.status && this.status.node_ui_name) {
@@ -463,7 +527,7 @@ export default {
         this.status = {
           instance: output.instance || this.instanceName,
           node: output.node || "1",
-          node_ui_name: output.node_ui_name || `Knoten ${output.node || '1'}`,
+          node_ui_name: output.node_ui_name || `Knoten ${output.node || "1"}`,
           services: output.services || [],
           images: output.images || [],
           volumes: output.volumes || [],
@@ -516,7 +580,9 @@ export default {
       if (config) {
         this.configuration = {
           domain_name: config.domain_name || "",
-          app_url: config.app_url || (config.domain_name ? `https://${config.domain_name}` : ""),
+          app_url:
+            config.app_url ||
+            (config.domain_name ? `https://${config.domain_name}` : ""),
           lets_encrypt: Boolean(config.lets_encrypt),
         };
       }

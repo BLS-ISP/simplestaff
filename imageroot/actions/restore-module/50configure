@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+
+#
+# SimpleStaff - NS8 restore-module step 50configure
+#
+
+import json
+import os
+import sys
+import agent
+import agent.tasks
+
+request = json.load(sys.stdin)
+renv = request.get("environment", {})
+
+domain_name = renv.get("DOMAIN_NAME") or os.environ.get("DOMAIN_NAME", "")
+super_admin_email = renv.get("SUPER_ADMIN_EMAIL") or os.environ.get("SUPER_ADMIN_EMAIL", "")
+
+if domain_name and super_admin_email:
+    try:
+        smtp_port = int(renv.get("SMTP_PORT") or os.environ.get("SMTP_PORT") or 587)
+    except (ValueError, TypeError):
+        smtp_port = 587
+
+    configure_retval = agent.tasks.run(
+        agent_id=os.environ["AGENT_ID"],
+        action="configure-module",
+        data={
+            "domain_name": domain_name,
+            "super_admin_email": super_admin_email,
+            "super_admin_password": "",
+            "lets_encrypt": renv.get("LETS_ENCRYPT", os.environ.get("LETS_ENCRYPT", "True")) == "True",
+            "http2https": renv.get("HTTP2HTTPS", os.environ.get("HTTP2HTTPS", "True")) == "True",
+            "smtp_enabled": renv.get("SMTP_ENABLED", os.environ.get("SMTP_ENABLED", "False")) == "True",
+            "smtp_host": renv.get("SMTP_HOST", os.environ.get("SMTP_HOST", "")),
+            "smtp_port": smtp_port,
+            "smtp_user": renv.get("SMTP_USER", os.environ.get("SMTP_USER", "")),
+            "smtp_password": "",
+            "smtp_from": renv.get("SMTP_FROM", os.environ.get("SMTP_FROM", "")),
+        },
+    )
+    agent.assert_exp(configure_retval["exit_code"] == 0, "The configure-module subtask failed!")

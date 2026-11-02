@@ -70,11 +70,12 @@
     "smtp_user": "SMTP-Benutzername",
     "smtp_user_placeholder": "z.B. user@dein-server.de",
     "smtp_password": "SMTP-Passwort",
-    "smtp_password_placeholder": "Passwort für den Mailversand (leer lassen für unverändert)",
+    "smtp_password_placeholder": "Passwort für den Mailversand",
+    "smtp_password_existing": "Unverändert (leer lassen)",
     "smtp_from": "Absender-Adresse (From)",
     "smtp_from_placeholder": "z.B. SimpleStaff <noreply@firma.de> oder SimpleStaff",
     "send_test_email": "Test-E-Mail senden",
-    "send_test_email_hint": "Sendet eine Testnachricht an {email}",
+    "send_test_email_hint": "Sendet sofort eine Testnachricht an {email}",
     "test_email_sent": "Test-E-Mail wurde erfolgreich an {email} versendet!",
     "test_email_failed": "Fehler beim Senden der Test-E-Mail.",
     "enabled": "Aktiviert",
@@ -97,9 +98,15 @@
     "configure-module": "Modul konfigurieren",
     "get-status": "Status abrufen",
     "get-name": "Instanzname abrufen",
-    "send-test-email": "Test-E-Mail senden"
+    "send-test-email": "Test-E-Mail senden",
+    "list-installed-modules": "Installierte Module abrufen"
+  },
+  "task": {
+    "cannot_create_task": "Aufgabe {action} konnte nicht erstellt werden"
   },
   "error": {
-    "generic_error": "Ein unerwarteter Fehler ist aufgetreten."
+    "generic_error": "Ein unerwarteter Fehler ist aufgetreten.",
+    "cannot_retrieve_installed_modules": "Installierte Module konnten nicht abgerufen werden",
+    "cannot_retrieve_module_info": "Modulinformationen konnten nicht geladen werden"
   }
 }

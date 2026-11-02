@@ -6,29 +6,46 @@
 exec 1>&2  # Redirect stdout to stderr for journald logging
 echo "SimpleStaff: Update hook starting..."
 
-# Migrate legacy state directory if present in ~/.config/state
-if [ -d "$HOME/.config/state" ] && [ ! -d "$HOME/state" ]; then
-    echo "SimpleStaff: Migrating legacy state directory to $HOME/state..."
-    mv "$HOME/.config/state" "$HOME/state" 2>/dev/null || true
+mkdir -p "$HOME/state/postgres_data" "$HOME/.config/state"
+
+# Synchronize environment files between ~/.config/state and ~/state
+if [ -f "$HOME/.config/state/environment" ]; then
+    cp -f "$HOME/.config/state/environment" "$HOME/state/environment" 2>/dev/null || true
+elif [ -f "$HOME/state/environment" ]; then
+    cp -f "$HOME/state/environment" "$HOME/.config/state/environment" 2>/dev/null || true
 fi
 
-if [ -f "$HOME/state/environment" ]; then
-    echo "SimpleStaff: Loading environment variables from state/environment..."
+if [ -f "$HOME/.config/state/environment" ]; then
+    echo "SimpleStaff: Loading environment variables..."
+    set -a
+    . "$HOME/.config/state/environment"
+    set +a
+elif [ -f "$HOME/state/environment" ]; then
     set -a
     . "$HOME/state/environment"
     set +a
-elif [ -f environment ]; then
-    echo "SimpleStaff: Loading environment variables..."
-    set -a
-    . ./environment
-    set +a
 fi
+
+# Pull updated application images so systemd restart is fast and clean
+BACKEND_IMG="${SIMPLESTAFF_BACKEND_IMAGE:-ghcr.io/bls-isp/simplestaff-backend:latest}"
+FRONTEND_IMG="${SIMPLESTAFF_FRONTEND_IMAGE:-ghcr.io/bls-isp/simplestaff-frontend:latest}"
+POSTGRES_IMG="${POSTGRES_IMAGE:-docker.io/library/postgres:15-alpine}"
+
+echo "SimpleStaff: Pulling latest container images..."
+podman pull "$POSTGRES_IMG" || true
+podman pull "$BACKEND_IMG" || true
+podman pull "$FRONTEND_IMG" || true
 
 echo "SimpleStaff: Reloading systemd daemon..."
 systemctl --user daemon-reload || true
 
-echo "SimpleStaff: Restarting simplestaff.service..."
-systemctl --user restart simplestaff.service || true
+if [ -n "${DOMAIN_NAME:-}" ]; then
+    echo "SimpleStaff: Restarting simplestaff.service..."
+    systemctl --user enable simplestaff.service 2>/dev/null || true
+    systemctl --user restart simplestaff.service || true
+else
+    echo "SimpleStaff: Module not yet configured (DOMAIN_NAME empty), skipping service start."
+fi
 
 echo "SimpleStaff: Update hook completed successfully."
 exit 0

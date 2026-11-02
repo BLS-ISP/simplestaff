@@ -34,7 +34,9 @@ pub struct AppState {
 // Super-admin seeding
 // ---------------------------------------------------------------------------
 
-/// Ensure the system tenant and super-admin user exist.
+/// Ensure the system tenant and super-admin user exist, and keep the
+/// super-admin credentials synchronized with the environment configuration
+/// (e.g. when updated via NethServer 8 Cockpit settings).
 ///
 /// This runs raw SQL intentionally so that it bypasses Row-Level Security
 /// policies (which require a tenant context that doesn't exist yet on first
@@ -44,30 +46,11 @@ async fn seed_super_admin(db: &DatabaseConnection, config: &Config) -> Result<()
         password_hash::{rand_core::OsRng, SaltString},
         Argon2, PasswordHasher,
     };
+    use sea_orm::Value;
 
     let backend = sea_orm::DatabaseBackend::Postgres;
 
-    // Check if the super admin already exists.
-    let check_sql = format!(
-        "SELECT id FROM users WHERE email = '{}'",
-        config.super_admin_email
-    );
-    let existing = db
-        .query_one(Statement::from_string(backend, check_sql))
-        .await?;
-
-    if existing.is_some() {
-        tracing::info!("Super admin already exists – skipping seed.");
-        return Ok(());
-    }
-
-    tracing::info!("Seeding system tenant and super admin user …");
-
-    let tenant_id = uuid::Uuid::new_v4();
-    let user_id = uuid::Uuid::new_v4();
-    let now = chrono::Utc::now().to_rfc3339();
-
-    // Hash the password with Argon2.
+    // Hash the configured super-admin password with Argon2.
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2
@@ -75,24 +58,86 @@ async fn seed_super_admin(db: &DatabaseConnection, config: &Config) -> Result<()
         .map_err(|e| errors::AppError::InternalError(format!("Password hashing failed: {e}")))?
         .to_string();
 
-    // Insert system tenant.
-    let insert_tenant = format!(
-        "INSERT INTO tenants (id, name, slug, created_at, updated_at) \
-         VALUES ('{tenant_id}', '{name}', '{slug}', '{now}', '{now}')",
-        name = config.super_admin_tenant_name,
-        slug = config.super_admin_tenant_slug,
-    );
-    db.execute(Statement::from_string(backend, insert_tenant))
+    let now = chrono::Utc::now();
+
+    // Check if a super_admin user already exists (either by email or by role).
+    let existing = db
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            "SELECT id FROM users WHERE email = $1 OR role = 'super_admin' ORDER BY created_at ASC LIMIT 1",
+            [Value::from(config.super_admin_email.clone())],
+        ))
         .await?;
 
-    // Insert super admin user.
-    let insert_user = format!(
-        "INSERT INTO users (id, tenant_id, email, password_hash, role, first_name, last_name, is_active, created_at, updated_at) \
-         VALUES ('{user_id}', '{tenant_id}', '{email}', '{password_hash}', 'super_admin', 'Super', 'Admin', true, '{now}', '{now}')",
-        email = config.super_admin_email,
-    );
-    db.execute(Statement::from_string(backend, insert_user))
+    if let Some(row) = existing {
+        let existing_id: uuid::Uuid = row.try_get("", "id")?;
+
+        // Synchronize email and password_hash so credential changes in NS8 Settings take effect.
+        db.execute(Statement::from_sql_and_values(
+            backend,
+            "UPDATE users SET email = $1, password_hash = $2, is_active = true, updated_at = $3 WHERE id = $4",
+            [
+                Value::from(config.super_admin_email.clone()),
+                Value::from(password_hash),
+                Value::from(now),
+                Value::from(existing_id),
+            ],
+        ))
         .await?;
+
+        tracing::info!(
+            "Super admin already exists (user_id={existing_id}) – synchronized email and password from configuration."
+        );
+        return Ok(());
+    }
+
+    tracing::info!("Seeding system tenant and super admin user …");
+
+    let tenant_id = uuid::Uuid::new_v4();
+    let user_id = uuid::Uuid::new_v4();
+
+    // Insert system tenant (or reuse if slug already exists).
+    let existing_tenant = db
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            "SELECT id FROM tenants WHERE slug = $1 LIMIT 1",
+            [Value::from(config.super_admin_tenant_slug.clone())],
+        ))
+        .await?;
+
+    let effective_tenant_id = if let Some(t_row) = existing_tenant {
+        t_row.try_get("", "id")?
+    } else {
+        db.execute(Statement::from_sql_and_values(
+            backend,
+            "INSERT INTO tenants (id, name, slug, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)",
+            [
+                Value::from(tenant_id),
+                Value::from(config.super_admin_tenant_name.clone()),
+                Value::from(config.super_admin_tenant_slug.clone()),
+                Value::from(now),
+                Value::from(now),
+            ],
+        ))
+        .await?;
+        tenant_id
+    };
+
+    // Insert super admin user.
+    db.execute(Statement::from_sql_and_values(
+        backend,
+        "INSERT INTO users (id, tenant_id, email, password_hash, role, first_name, last_name, is_active, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, 'super_admin', 'Super', 'Admin', true, $5, $6)",
+        [
+            Value::from(user_id),
+            Value::from(effective_tenant_id),
+            Value::from(config.super_admin_email.clone()),
+            Value::from(password_hash),
+            Value::from(now),
+            Value::from(now),
+        ],
+    ))
+    .await?;
 
     tracing::info!("Super admin seeded successfully (user_id={user_id}).");
     Ok(())
@@ -125,10 +170,24 @@ async fn main() {
         tracing::info!("SMTP email notifications DISABLED in configuration.");
     }
 
-    // Connect to the database.
-    let db: DatabaseConnection = Database::connect(&config.database_url)
-        .await
-        .expect("Failed to connect to database");
+    // Connect to the database with retry backoff (handles Podman pod startup ordering).
+    let max_retries = 30;
+    let mut attempt = 0;
+    let db: DatabaseConnection = loop {
+        attempt += 1;
+        match Database::connect(&config.database_url).await {
+            Ok(conn) => break conn,
+            Err(e) if attempt < max_retries => {
+                tracing::warn!(
+                    "Database connection attempt {attempt}/{max_retries} failed ({e}) – retrying in 2s…"
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            Err(e) => {
+                panic!("Failed to connect to database after {max_retries} attempts: {e}");
+            }
+        }
+    };
 
     tracing::info!("Connected to database.");
 

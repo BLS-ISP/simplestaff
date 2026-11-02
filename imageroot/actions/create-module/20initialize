@@ -2,33 +2,58 @@
 
 #
 # SimpleStaff - NS8 create-module action
-# Initial setup: creates state directories and sets default image references.
+# Initial setup: creates state directories, initializes secrets, and sets default image references.
 #
 
 import os
 import sys
-import agent
+import secrets
+import shutil
 import traceback
+import agent
 
 def log_error(msg):
     print(f"ERROR: {msg}", file=sys.stderr)
 
 try:
     print("Initializing SimpleStaff module...", file=sys.stderr)
-    
-    # Ensure the state directories exist
+
+    # Ensure state directories exist
     os.makedirs(os.path.expanduser('~/state/postgres_data'), exist_ok=True)
+    os.makedirs(os.path.expanduser('~/.config/state'), exist_ok=True)
 
     # Set the container image references for use in the systemd service
     postgres_img = os.environ.get('POSTGRES_IMAGE', 'docker.io/library/postgres:15-alpine')
     backend_img = os.environ.get('SIMPLESTAFF_BACKEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-backend:latest')
     frontend_img = os.environ.get('SIMPLESTAFF_FRONTEND_IMAGE', 'ghcr.io/bls-isp/simplestaff-frontend:latest')
 
-    print(f"Setting default images: postgres={postgres_img}, backend={backend_img}, frontend={frontend_img}", file=sys.stderr)
+    # Generate persistent database password and JWT secret on initial installation
+    db_password = os.environ.get('DATABASE_PASSWORD', '') or secrets.token_hex(16)
+    jwt_secret = os.environ.get('JWT_SECRET', '') or secrets.token_hex(32)
+
+    print(
+        f"Setting default images: postgres={postgres_img}, backend={backend_img}, frontend={frontend_img}",
+        file=sys.stderr,
+    )
 
     agent.set_env('POSTGRES_IMAGE', postgres_img)
     agent.set_env('SIMPLESTAFF_BACKEND_IMAGE', backend_img)
     agent.set_env('SIMPLESTAFF_FRONTEND_IMAGE', frontend_img)
+    agent.set_env('DATABASE_PASSWORD', db_password)
+    agent.set_env('JWT_SECRET', jwt_secret)
+    agent.set_env('LETS_ENCRYPT', os.environ.get('LETS_ENCRYPT', 'True'))
+    agent.set_env('HTTP2HTTPS', os.environ.get('HTTP2HTTPS', 'True'))
+    agent.set_env('SMTP_ENABLED', os.environ.get('SMTP_ENABLED', 'False'))
+    agent.set_env('SMTP_PORT', os.environ.get('SMTP_PORT', '587'))
+
+    # Flush environment variables to disk immediately
+    agent.dump_env()
+
+    # Synchronize environment file between ~/.config/state and ~/state
+    src_env = os.path.expanduser('~/.config/state/environment')
+    dst_env = os.path.expanduser('~/state/environment')
+    if os.path.exists(src_env):
+        shutil.copy2(src_env, dst_env)
 
     print("Module initialization completed successfully.", file=sys.stderr)
 

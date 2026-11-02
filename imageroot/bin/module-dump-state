@@ -1,0 +1,12 @@
+#!/bin/bash
+
+#
+# SimpleStaff - NS8 Pre-Backup State Dump
+# Creates a consistent PostgreSQL dump before Restic backup runs.
+#
+
+exec 1>&2
+
+if systemctl --user -q is-active simplestaff.service; then
+    podman exec simplestaff-db pg_dump -U simplestaff -d simplestaff > simplestaff.sql 2>/dev/null || true
+fi

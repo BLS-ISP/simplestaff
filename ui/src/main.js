@@ -49,15 +49,32 @@ import enMessages from "../public/i18n/en/translation.json";
 
 Vue.use(VueI18n);
 
-const navigatorLang = navigator.language.substring(0, 2);
-const activeLang = ["de", "en"].includes(navigatorLang) ? navigatorLang : "en";
-const messages = activeLang === "de" ? deMessages : enMessages;
+let detectedLang = "de";
+try {
+  if (
+    window.parent &&
+    window.parent.core &&
+    window.parent.core.$i18n &&
+    window.parent.core.$i18n.locale
+  ) {
+    detectedLang = window.parent.core.$i18n.locale.substring(0, 2);
+  } else if (navigator.language) {
+    detectedLang = navigator.language.substring(0, 2);
+  }
+} catch (_e) {
+  if (navigator.language) {
+    detectedLang = navigator.language.substring(0, 2);
+  }
+}
+
+const activeLang = ["de", "en"].includes(detectedLang) ? detectedLang : "en";
 
 const i18n = new VueI18n({
   locale: activeLang,
   fallbackLocale: "en",
   messages: {
-    [activeLang]: messages,
+    de: deMessages,
+    en: enMessages,
   },
 });
 

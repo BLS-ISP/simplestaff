@@ -1,12 +1,32 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "send-test-email input",
-    "description": "Send a test email using configured SMTP settings",
+    "description": "Send a test email using provided or configured SMTP settings",
     "type": "object",
     "properties": {
         "to": {
             "type": "string",
             "title": "Recipient email address"
+        },
+        "smtp_host": {
+            "type": "string",
+            "title": "SMTP Server Host"
+        },
+        "smtp_port": {
+            "type": "integer",
+            "title": "SMTP Port"
+        },
+        "smtp_user": {
+            "type": "string",
+            "title": "SMTP Username"
+        },
+        "smtp_password": {
+            "type": "string",
+            "title": "SMTP Password"
+        },
+        "smtp_from": {
+            "type": "string",
+            "title": "SMTP Sender Address"
         }
     }
 }

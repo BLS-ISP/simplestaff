@@ -16,6 +16,10 @@
             "type": "string",
             "title": "Super admin email"
         },
+        "is_configured": {
+            "type": "boolean",
+            "title": "Whether initial configuration has been completed"
+        },
         "lets_encrypt": {
             "type": "boolean",
             "title": "Let's Encrypt SSL certificate"
@@ -43,6 +47,10 @@
         "smtp_from": {
             "type": "string",
             "title": "SMTP From Address"
+        },
+        "has_smtp_password": {
+            "type": "boolean",
+            "title": "Whether an SMTP password is stored"
         }
     }
 }

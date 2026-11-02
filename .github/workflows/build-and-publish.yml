@@ -76,42 +76,15 @@ jobs:
             ${{ env.FRONTEND_IMAGE }}:${{ steps.version.outputs.tag }}
             ${{ env.FRONTEND_IMAGE }}:latest
 
-      # ── 3. Build NS8 Admin UI ──
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install UI dependencies
-        working-directory: ./ui
-        run: yarn install
-
-      - name: Build UI
-        working-directory: ./ui
-        run: yarn build
-        env:
-          NODE_OPTIONS: --openssl-legacy-provider
-
-      # ── 4. Build & Push NS8 Module Installer Image ──
-      # This image contains imageroot/ + ui/dist/ and is what NS8 pulls for install/update
+      # ── 3. Build & Push NS8 Module Installer Image (multi-stage: builds UI + packages imageroot) ──
       - name: Build and push NS8 Module image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: true
+          build-args: |
+            IMAGE_TAG=${{ steps.version.outputs.tag }}
           tags: |
             ${{ env.MODULE_IMAGE }}:${{ steps.version.outputs.tag }}
             ${{ env.MODULE_IMAGE }}:latest
-
-      # ── 5. Make packages public (first run only) ──
-      - name: Ensure packages are public
-        if: steps.version.outputs.is_release == 'false'
-        continue-on-error: true
-        run: |
-          echo "Note: If this is the first push, you may need to manually set"
-          echo "the package visibility to 'public' in GitHub Settings > Packages."
-          echo "Go to: https://github.com/orgs/${{ github.repository_owner }}/packages"

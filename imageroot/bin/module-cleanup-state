@@ -1,0 +1,9 @@
+#!/bin/bash
+
+#
+# SimpleStaff - NS8 Post-Backup State Cleanup
+#
+
+exec 1>&2
+
+rm -f simplestaff.sql

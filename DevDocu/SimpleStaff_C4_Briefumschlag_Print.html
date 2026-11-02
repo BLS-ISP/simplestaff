@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLS-ISP Solutions – DIN C4 Geschäftsumschlag (Versandtasche)</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+    /* ==========================================================================
+       CORPORATE DESIGN: BLS-ISP ENTERPRISE STATIONERY
+       Minimalistisch, edel, puristisch – Keine Werbung, kein gequetschtes Layout
+       ========================================================================== */
+    :root {
+      --brand-navy: #090e17;
+      --brand-blue: #1d4ed8;
+      --brand-slate: #334155;
+      --brand-muted: #64748b;
+      --brand-border: #cbd5e1;
+      --brand-hairline: #e2e8f0;
+
+      --zone-frankier: rgba(234, 88, 12, 0.12);
+      --zone-frankier-border: #ea580c;
+      --zone-codier: rgba(220, 38, 38, 0.12);
+      --zone-codier-border: #dc2626;
+      --zone-window: rgba(37, 99, 235, 0.12);
+      --zone-window-border: #2563eb;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #0d1117;
+      color: var(--brand-navy);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1.5rem 1rem 4rem 1rem;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ==========================================================================
+       SCREEN-ONLY FLOATING TOOLBAR
+       ========================================================================== */
+    .screen-toolbar {
+      position: sticky;
+      top: 1rem;
+      z-index: 2000;
+      background: #161f2e;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 50px;
+      padding: 0.6rem 1.4rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 0.85rem;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.7);
+      margin-bottom: 2rem;
+      color: #f1f5f9;
+      font-size: 0.85rem;
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .toolbar-label {
+      font-weight: 700;
+      font-size: 0.72rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 22px;
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    .btn-tool {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #f1f5f9;
+      padding: 0.38rem 0.85rem;
+      border-radius: 30px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.18s ease;
+      user-select: none;
+    }
+
+    .btn-tool:hover {
+      background: rgba(255, 255, 255, 0.18);
+      transform: translateY(-1px);
+    }
+
+    .btn-tool.active {
+      background: #1d4ed8;
+      border-color: #60a5fa;
+      box-shadow: 0 0 14px rgba(29, 78, 216, 0.6);
+      color: #ffffff;
+    }
+
+    .btn-print {
+      background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+      color: #ffffff;
+      border: none;
+      padding: 0.45rem 1.35rem;
+      border-radius: 30px;
+      font-weight: 800;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      box-shadow: 0 4px 16px rgba(29, 78, 216, 0.5);
+      transition: all 0.18s ease;
+    }
+
+    .btn-print:hover {
+      background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+      box-shadow: 0 6px 22px rgba(29, 78, 216, 0.7);
+      transform: translateY(-1px);
+    }
+
+    /* ==========================================================================
+       DIN C4 ENVELOPE (HOCHFORMAT VERSANDTASCHE: 229mm x 324mm)
+       ========================================================================== */
+    .envelope-sheet {
+      width: 229mm;
+      height: 324mm;
+      min-height: 324mm;
+      max-height: 324mm;
+      background-color: #ffffff;
+      color: var(--brand-navy);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.55), 0 5px 15px rgba(0, 0, 0, 0.2);
+      border-radius: 1px;
+      position: relative;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+
+    /* ==========================================================================
+       KOPFBEREICH: BLS-ISP CORPORATE IDENTITY
+       Positioniert: 20 mm vom linken Rand, 15 mm vom oberen Rand
+       ========================================================================== */
+    .c4-header-row {
+      position: absolute;
+      left: 20mm;
+      top: 15mm;
+      right: 15mm;
+      height: 25mm;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .bls-identity-group {
+      display: flex;
+      align-items: center;
+      gap: 4.5mm;
+    }
+
+    /* Geometrisches High-Tech Signet */
+    .bls-symbol {
+      width: 10.5mm;
+      height: 10.5mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #0f172a;
+      flex-shrink: 0;
+    }
+
+    .bls-symbol svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .bls-header-text {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .bls-brand-row {
+      display: flex;
+      align-items: baseline;
+      gap: 2.5mm;
+    }
+
+    .bls-name {
+      font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
+      font-size: 14pt;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #090e17;
+      line-height: 1;
+    }
+
+    .bls-domain {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 9.5pt;
+      font-weight: 600;
+      color: #1d4ed8;
+      letter-spacing: -0.01em;
+    }
+
+    .bls-descriptor {
+      font-size: 6.8pt;
+      font-weight: 600;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 1.2mm;
+    }
+
+    /* ==========================================================================
+       FRANKIERZONE (Deutsche Post Norm: Mindestens 74 x 40 mm oben rechts)
+       ========================================================================== */
+    .frankierzone-box {
+      width: 74mm;
+      height: 38mm;
+      border: 0.6pt dashed #cbd5e1;
+      border-radius: 2px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 2.5mm;
+      position: absolute;
+      right: 0;
+      top: 0;
+      background: #fafafa;
+    }
+
+    .frankier-dp-logo {
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 7.8pt;
+      color: #090e17;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .frankier-wave {
+      display: flex;
+      margin: 2mm 0;
+    }
+
+    .frankier-label {
+      font-size: 6.5pt;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: #1e293b;
+      text-transform: uppercase;
+    }
+
+    .frankier-sub {
+      font-size: 5.5pt;
+      color: #64748b;
+      margin-top: 0.8mm;
+    }
+
+    /* Briefmarke */
+    .frankierzone-box.type-stamp {
+      background: #ffffff;
+      border: 1pt dashed #94a3b8;
+    }
+    .frankierzone-box.type-stamp .stamp-inner {
+      border: 0.6pt dotted #cbd5e1;
+      padding: 5mm 6mm;
+      font-size: 6.8pt;
+      font-weight: 600;
+      color: #64748b;
+    }
+
+    /* Blanko (Freistempler) */
+    .frankierzone-box.type-blank {
+      background: transparent;
+      border: 0.6pt dotted rgba(203, 213, 225, 0.4);
+    }
+    .frankierzone-box.type-blank .blank-hint {
+      font-size: 6pt;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ==========================================================================
+       DIN 680 ADRESSFENSTER (Standard: 20 mm von links, 45 mm von oben, 90 x 45 mm)
+       ========================================================================== */
+    .c4-window {
+      position: absolute;
+      left: 20mm;
+      top: 45mm;
+      width: 90mm;
+      height: 45mm;
+      border: 0.6pt solid #cbd5e1;
+      border-radius: 1.5px;
+      padding: 3.5mm 4.5mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      background: rgba(248, 250, 252, 0.5);
+    }
+
+    /* Einzeilige Absender-Rückmeldezeile (max 5 mm) */
+    .window-sender-line {
+      font-size: 6.5pt;
+      line-height: 1;
+      color: #334155;
+      font-weight: 600;
+      border-bottom: 0.5pt solid #cbd5e1;
+      padding-bottom: 1.8mm;
+      margin-bottom: 3.2mm;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: -0.01em;
+    }
+
+    /* Empfängeradresse */
+    .window-recipient-address {
+      font-size: 9.5pt;
+      line-height: 1.38;
+      color: #000000;
+      font-weight: 400;
+    }
+
+    .window-recipient-address strong {
+      font-weight: 700;
+    }
+
+    .window-cutout-hint {
+      position: absolute;
+      right: 3mm;
+      bottom: 2mm;
+      font-size: 5.5pt;
+      color: #94a3b8;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      pointer-events: none;
+    }
+
+    /* ==========================================================================
+       MITTE: PURISTISCHER, EDLER WEISSRAUM
+       Keine reißerischen Werbebanner oder Textblöcke!
+       ========================================================================== */
+
+    /* ==========================================================================
+       CODIERZONE (Deutsche Post: 150 mm x 15 mm unten rechts)
+       Muss zwingend frei und unbedruckt bleiben für den Strichcode der Post!
+       ========================================================================== */
+    .c4-codierzone-reserve {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 150mm;
+      height: 15mm;
+      background: transparent;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* ==========================================================================
+       FOOTER: SUBTIEL, EINZEILIG, GROSSZÜGIG OBERHALB DER CODIERZONE
+       Platziert bei 20 mm vom unteren Rand (sicher oberhalb der 15 mm Codierzone)
+       Breite: 189 mm (von 20 mm links bis 20 mm rechts) – Absolut ungestaucht!
+       ========================================================================== */
+    .c4-footer-row {
+      position: absolute;
+      left: 20mm;
+      right: 20mm;
+      bottom: 22mm; /* Großzügige 7 mm Sicherheitsabstand oberhalb der 15 mm Codierzone */
+      border-top: 0.5pt solid #e2e8f0;
+      padding-top: 3mm;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7.2pt;
+      color: #64748b;
+      letter-spacing: 0.02em;
+      line-height: 1;
+    }
+
+    .footer-left-info {
+      display: flex;
+      align-items: center;
+      gap: 3mm;
+      white-space: nowrap;
+    }
+
+    .footer-left-info strong {
+      color: #090e17;
+      font-weight: 700;
+    }
+
+    .footer-sep {
+      color: #cbd5e1;
+    }
+
+    .footer-right-info {
+      display: flex;
+      align-items: center;
+      gap: 3mm;
+      white-space: nowrap;
+    }
+
+    .footer-right-info a {
+      color: #1d4ed8;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    /* Minimalistischer Modus (versteckt Footer komplett für maximale Puristik) */
+    body.hide-footer .c4-footer-row {
+      display: none !important;
+    }
+
+    /* ==========================================================================
+       POSTALISCHE PRÜFHILFSLINIEN (Overlay)
+       ========================================================================== */
+    .postal-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: none;
+      z-index: 100;
+    }
+
+    body.show-postal-guides .postal-overlay {
+      display: block;
+    }
+
+    .guide-frankier {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 74mm;
+      height: 40mm;
+      background: var(--zone-frankier);
+      border: 1.5px dashed var(--zone-frankier-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 7.5pt;
+      font-weight: 700;
+      color: var(--zone-frankier-border);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .guide-codier {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 150mm;
+      height: 15mm;
+      background: var(--zone-codier);
+      border: 1.5px dashed var(--zone-codier-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 7.5pt;
+      font-weight: 700;
+      color: var(--zone-codier-border);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .guide-window {
+      position: absolute;
+      left: 20mm;
+      top: 45mm;
+      width: 90mm;
+      height: 45mm;
+      border: 1.5px dashed var(--zone-window-border);
+      background: var(--zone-window);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 7.5pt;
+      font-weight: 700;
+      color: var(--zone-window-border);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ==========================================================================
+       LIVE-EDITIERBARKEIT
+       ========================================================================== */
+    body.is-editing [contenteditable="true"] {
+      outline: 1.2px dashed #3b82f6;
+      outline-offset: 2px;
+      background-color: rgba(59, 130, 246, 0.04);
+      border-radius: 2px;
+      cursor: text;
+    }
+    body.is-editing [contenteditable="true"]:focus {
+      outline: 1.8px solid #1d4ed8;
+      background-color: rgba(59, 130, 246, 0.08);
+    }
+
+    /* ==========================================================================
+       PRINT STYLES (DIN C4 HOCHFORMAT: 229mm x 324mm)
+       ========================================================================== */
+    @page {
+      size: 229mm 324mm;
+      margin: 0mm;
+    }
+
+    @media print {
+      html, body {
+        background: #ffffff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .screen-toolbar {
+        display: none !important;
+      }
+
+      .postal-overlay {
+        display: none !important;
+      }
+
+      .window-cutout-hint {
+        display: none !important;
+      }
+
+      .envelope-sheet {
+        width: 229mm !important;
+        height: 324mm !important;
+        min-height: 324mm !important;
+        max-height: 324mm !important;
+        box-shadow: none !important;
+        border: none !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        page-break-after: always;
+        break-after: page;
+      }
+
+      .c4-window {
+        background: transparent !important;
+        border-color: #cbd5e1 !important;
+      }
+    }
+  </style>
+</head>
+<body class="is-editing">
+
+  <!-- ========================================================================
+       SCREEN TOOLBAR (Steuerleiste am Bildschirm)
+       ======================================================================== -->
+  <header class="screen-toolbar" aria-label="Drucksteuerung">
+    
+    <!-- Format-Info -->
+    <div class="toolbar-group">
+      <span class="toolbar-label">Format:</span>
+      <span style="font-weight: 700; color: #ffffff; background: rgba(29, 78, 216, 0.25); padding: 0.25rem 0.65rem; border-radius: 20px; font-size: 0.78rem; border: 1px solid rgba(29, 78, 216, 0.4);">
+        ✉️ DIN C4 Versandtasche (229 × 324 mm)
+      </span>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Porto / Frankierzone -->
+    <div class="toolbar-group">
+      <span class="toolbar-label">Porto:</span>
+      <button class="btn-tool active" id="btn-frank-dp" onclick="setFrankierType('dp')">
+        🇩🇪 Entgelt bezahlt
+      </button>
+      <button class="btn-tool" id="btn-frank-stamp" onclick="setFrankierType('stamp')">
+        📮 Briefmarke
+      </button>
+      <button class="btn-tool" id="btn-frank-blank" onclick="setFrankierType('blank')">
+        ⚪ Blanko (Freistempler)
+      </button>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Stil / Optionen -->
+    <div class="toolbar-group">
+      <button class="btn-tool" id="btn-toggle-footer" onclick="toggleFooter()">
+        📄 Fußzeile: An
+      </button>
+      <button class="btn-tool" id="btn-toggle-guides" onclick="togglePostalGuides()">
+        📐 Post-Zonen prüfen
+      </button>
+      <button class="btn-tool active" id="btn-toggle-edit" onclick="toggleEditMode()">
+        ✏️ Adressen bearbeiten
+      </button>
+    </div>
+
+    <div class="toolbar-divider"></div>
+
+    <!-- Direkter Druck -->
+    <button class="btn-print" onclick="window.print()">
+      🖨️ Drucken / Als PDF speichern
+    </button>
+  </header>
+
+
+  <!-- ========================================================================
+       DIN C4 VERSANDTASCHE (HOCHFORMAT: 229 mm x 324 mm)
+       ======================================================================== -->
+  <main class="envelope-sheet" id="envelope-sheet">
+
+    <!-- Post-Prüfzonen Overlay -->
+    <div class="postal-overlay">
+      <div class="guide-frankier">Frankierzone (74 × 40 mm)</div>
+      <div class="guide-codier">Codierzone (150 × 15 mm) – Strikt frei halten!</div>
+      <div class="guide-window">DIN 680 Sichtfenster (90 × 45 mm)</div>
+    </div>
+
+
+    <!-- ====================================================================
+         KOPFZEILE: BLS-ISP BRANDING & FRANKIERZONE
+         ==================================================================== -->
+    <div class="c4-header-row">
+      
+      <!-- BLS-ISP Corporate Identity Logo & Typografie -->
+      <div class="bls-identity-group">
+        <!-- Vektor-Signet: Minimalistisches, geometrisches Server/Netzwerk-Icon -->
+        <div class="bls-symbol" aria-hidden="true">
+          <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="3" width="32" height="8" rx="2" stroke="#090e17" stroke-width="2.4"/>
+            <rect x="2" y="14" width="32" height="8" rx="2" stroke="#090e17" stroke-width="2.4"/>
+            <rect x="2" y="25" width="32" height="8" rx="2" stroke="#1d4ed8" stroke-width="2.4"/>
+            <circle cx="8" cy="7" r="1.5" fill="#1d4ed8"/>
+            <circle cx="8" cy="18" r="1.5" fill="#1d4ed8"/>
+            <circle cx="8" cy="29" r="1.5" fill="#1d4ed8"/>
+            <circle cx="13" cy="7" r="1.5" fill="#090e17"/>
+            <circle cx="13" cy="18" r="1.5" fill="#090e17"/>
+            <circle cx="13" cy="29" r="1.5" fill="#1d4ed8"/>
+          </svg>
+        </div>
+
+        <div class="bls-header-text">
+          <div class="bls-brand-row">
+            <span class="bls-name">BLS&bull;ISP</span>
+            <span class="bls-domain">bls-isp.net</span>
+          </div>
+          <div class="bls-descriptor">
+            IT-Infrastruktur &bull; Enterprise Cloud &bull; Plattform-Services
+          </div>
+        </div>
+      </div>
+
+      <!-- Frankierzone (Deutsche Post Norm) -->
+      <div class="frankierzone-box type-dp" id="frankier-box">
+        <div class="frankier-dp-logo">Deutsche Post</div>
+        <div class="frankier-wave">
+          <svg width="60" height="7" viewBox="0 0 60 7" fill="none">
+            <path d="M1 3.5C5 1 9 1 13 3.5C17 6 21 6 25 3.5C29 1 33 1 37 3.5C41 6 45 6 49 3.5C53 1 57 1 59 3.5" stroke="#090e17" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="frankier-label">Entgelt bezahlt</div>
+        <div class="frankier-sub">Einwurf / Dialogpost</div>
+      </div>
+
+    </div>
+
+
+    <!-- ====================================================================
+         DIN 680 ADRESSFENSTER (20 mm von links, 45 mm von oben, 90 x 45 mm)
+         ==================================================================== -->
+    <section class="c4-window" aria-label="DIN 680 Adressfenster">
+      
+      <!-- Absender-Rückmeldezeile (einzeilig im Fenster) -->
+      <div class="window-sender-line" contenteditable="true" spellcheck="false">
+        BLS-ISP &bull; Alexander Meier &bull; Ambergerstraße 40 &bull; D-92318 Neumarkt i.d.OPf.
+      </div>
+
+      <!-- Empfängeranschrift -->
+      <div class="window-recipient-address" contenteditable="true" spellcheck="false">
+        <strong>Hotel &amp; Gastro Gruppe Nord GmbH</strong><br>
+        z. Hd. Herrn Markus Weber &ndash; Betriebsleitung<br>
+        Am Hafenbecken 14<br>
+        <br>
+        <strong>D-20457 Hamburg</strong>
+      </div>
+
+      <span class="window-cutout-hint">DIN 680 (90×45mm)</span>
+    </section>
+
+
+    <!-- ====================================================================
+         MITTELTEIL: PURISTISCHER, EDLER WEISSRAUM
+         Absolut ruhig und unaufdringlich wie bei hochwertiger Firmenkorrespondenz.
+         ==================================================================== -->
+
+
+    <!-- ====================================================================
+         CODIERZONE (150 x 15 mm unten rechts)
+         Muss zwingend frei und unbedruckt bleiben nach Deutsche Post Richtlinien!
+         ==================================================================== -->
+    <div class="c4-codierzone-reserve"></div>
+
+
+    <!-- ====================================================================
+         FOOTER: SUBTIL & ELEGANT (EINZEILIG OBERHALB DER CODIERZONE)
+         Volle Breite von 189 mm – Keine gestauchten Spalten, purer Freiraum!
+         ==================================================================== -->
+    <footer class="c4-footer-row" id="c4-footer-row">
+      <div class="footer-left-info" contenteditable="true">
+        <strong>BLS-ISP</strong>
+        <span class="footer-sep">&bull;</span>
+        <span>Meier Alexander</span>
+        <span class="footer-sep">&bull;</span>
+        <span>Ambergerstraße 40, D-92318 Neumarkt i.d.OPf.</span>
+      </div>
+
+      <div class="footer-right-info" contenteditable="true">
+        <span>Tel: <strong>+49 177 2780306</strong></span>
+        <span class="footer-sep">&bull;</span>
+        <span>E-Mail: <strong>info@bls-isp.net</strong></span>
+        <span class="footer-sep">&bull;</span>
+        <span>Web: <strong>bls-isp.net</strong></span>
+      </div>
+    </footer>
+
+  </main>
+
+
+  <!-- ========================================================================
+       INTERACTIVE CONTROLLER SCRIPT
+       ======================================================================== -->
+  <script>
+    // 1. Frankier-Typ Umschaltung
+    function setFrankierType(type) {
+      const box = document.getElementById('frankier-box');
+      const bDp = document.getElementById('btn-frank-dp');
+      const bStamp = document.getElementById('btn-frank-stamp');
+      const bBlank = document.getElementById('btn-frank-blank');
+
+      [bDp, bStamp, bBlank].forEach(b => b.classList.remove('active'));
+
+      if (type === 'stamp') {
+        bStamp.classList.add('active');
+        box.className = 'frankierzone-box type-stamp';
+        box.innerHTML = '<div class="stamp-inner">Briefmarke<br><span style="font-size: 5.2pt; font-weight: normal;">oder Frankierabdruck</span></div>';
+      } else if (type === 'blank') {
+        bBlank.classList.add('active');
+        box.className = 'frankierzone-box type-blank';
+        box.innerHTML = '<div class="blank-hint">Frankierzone<br>(Freistempler / DV)</div>';
+      } else {
+        bDp.classList.add('active');
+        box.className = 'frankierzone-box type-dp';
+        box.innerHTML = `
+          <div class="frankier-dp-logo">Deutsche Post</div>
+          <div class="frankier-wave">
+            <svg width="60" height="7" viewBox="0 0 60 7" fill="none">
+              <path d="M1 3.5C5 1 9 1 13 3.5C17 6 21 6 25 3.5C29 1 33 1 37 3.5C41 6 45 6 49 3.5C53 1 57 1 59 3.5" stroke="#090e17" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="frankier-label">Entgelt bezahlt</div>
+          <div class="frankier-sub">Einwurf / Dialogpost</div>`;
+      }
+    }
+
+    // 2. Toggle Footer (An / Aus für maximalen Minimalismus)
+    function toggleFooter() {
+      const body = document.body;
+      const btn = document.getElementById('btn-toggle-footer');
+      const isHidden = body.classList.toggle('hide-footer');
+      btn.textContent = isHidden ? '📄 Fußzeile: Aus' : '📄 Fußzeile: An';
+      btn.classList.toggle('active', !isHidden);
+    }
+
+    // 3. Toggle Postal Guides (Prüfzonen)
+    function togglePostalGuides() {
+      const body = document.body;
+      const btn = document.getElementById('btn-toggle-guides');
+      const active = body.classList.toggle('show-postal-guides');
+      btn.classList.toggle('active', active);
+    }
+
+    // 4. Toggle Edit Mode (Adressen direkt bearbeiten)
+    function toggleEditMode() {
+      const body = document.body;
+      const btn = document.getElementById('btn-toggle-edit');
+      const active = body.classList.toggle('is-editing');
+      btn.classList.toggle('active', active);
+    }
+  </script>
+
+</body>
+</html>

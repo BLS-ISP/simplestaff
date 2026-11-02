@@ -14,7 +14,6 @@ def log_error(msg):
     print(f"ERROR: {msg}", file=sys.stderr)
 
 try:
-    # Import agent to initialize NS8 environment
     import agent
 except Exception as e:
     log_error(f"Failed to import NS8 agent: {e}")
@@ -22,8 +21,8 @@ except Exception as e:
     sys.exit(1)
 
 try:
-    # Read environment variables loaded by runagent from state/environment
-    domain_name = os.environ.get('DOMAIN_NAME', '')
+    domain_name = os.environ.get('DOMAIN_NAME', '').strip()
+    super_admin_email = os.environ.get('SUPER_ADMIN_EMAIL', '').strip()
     lets_encrypt_str = os.environ.get('LETS_ENCRYPT', 'True')
     http2https_str = os.environ.get('HTTP2HTTPS', 'True')
     smtp_enabled_str = os.environ.get('SMTP_ENABLED', 'False')
@@ -37,7 +36,8 @@ try:
     config = {
         "domain_name": domain_name,
         "app_url": f"https://{domain_name}" if domain_name else "",
-        "super_admin_email": os.environ.get('SUPER_ADMIN_EMAIL', ''),
+        "super_admin_email": super_admin_email,
+        "is_configured": bool(domain_name and super_admin_email and os.environ.get('SUPER_ADMIN_PASSWORD')),
         "lets_encrypt": lets_encrypt_str.lower() in ('true', '1', 'yes'),
         "http2https": http2https_str.lower() in ('true', '1', 'yes'),
         "smtp_enabled": smtp_enabled_str.lower() in ('true', '1', 'yes'),
@@ -45,9 +45,9 @@ try:
         "smtp_port": smtp_port,
         "smtp_user": os.environ.get('SMTP_USER', ''),
         "smtp_from": os.environ.get('SMTP_FROM', ''),
+        "has_smtp_password": bool(os.environ.get('SMTP_PASSWORD')),
     }
 
-    # Print to stdout (which is captured by NS8 task runner as output)
     json.dump(config, fp=sys.stdout)
     sys.stdout.flush()
 

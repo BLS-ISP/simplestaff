@@ -57,8 +57,38 @@ Klicken Sie auf den Button **"🖨️ Drucken / Als PDF speichern"** oder drück
 
 | Datei | Format | Zweck |
 | :--- | :--- | :--- |
+| `DevDocu/SimpleStaff_C4_Briefumschlag_Print.html` | **DIN C4 (Hochformat)** | **Offizieller BLS-ISP Briefumschlag (Versandtasche 229 × 324 mm) mit DIN 680 Fenster** |
 | `DevDocu/SimpleStaff_Print_Marketing.html` | **DIN A4 (2-Seiter)** | **Master-Flyer / B2B-Verkaufsbroschüre (Empfohlen)** |
 | `DevDocu/SimpleStaff_Marketing_Kit.md` | Markdown | Vorlagen für LinkedIn-Posts, Kaltakquise-Mails & Pressemitteilung |
 | `DevDocu/SimpleStaff_Presentation.pptx` | PowerPoint | Pitch-Präsentation für Kunden- & Investoren-Termine |
 | `DevDocu/SimpleStaff_A4_Flyer.html` | DIN A4 (1-Seiter) | Kompakter Einzelblatt-Flyer |
 | `DevDocu/SimpleStaff_Einfacher_Flyer.html` | DIN A5 | Handzettel speziell für Mitarbeiter / Onboarding |
+
+---
+
+## ✉️ Anleitung: Offizieller DIN C4 Briefumschlag (BLS-ISP Solutions)
+
+Für formelle geschäftliche Unterlagen, Verträge, Angebote und vertrauliche Firmenkorrespondenz steht die Druckvorlage `SimpleStaff_C4_Briefumschlag_Print.html` bereit. Sie ist gezielt auf **DIN C4 Hochformat (Versandtasche)** optimiert und rückt **BLS-ISP (`bls-isp.net`)** als primären Absender in den Fokus.
+
+### Features & Postalische Konformität
+1. **Fokus auf BLS-ISP Corporate Identity:**
+   - Professioneller, dezenter Briefkopf mit Vektor-Signet, Domain **`bls-isp.net`** und Firmenangaben (IT-Infrastruktur, Cloud Hosting & Enterprise Solutions).
+   - Dezent integrierter Projektverweis auf die SimpleStaff-Plattform.
+   - Absender-Rückmeldezeile im Sichtfenster: `BLS-ISP • Alexander Meier • Ambergerstraße 40 • D-92318 Neumarkt i.d.OPf.`.
+   - Fußzeile: Kontaktdaten mit Tel: `+49 177 2780306`, E-Mail: `info@bls-isp.net`, Web: `bls-isp.net`.
+2. **Seriöse Anmutung (Keine Reißerische Werbung):**
+   - Diskreter formaler Vermerk: *Geschäftspost &bull; Vertrauliche Unterlagen &bull; Unternehmenskorrespondenz*.
+   - Keine bunten Werbebanner, Verkaufsphrasen oder Störer &ndash; seriöser B2B-Enterprise-Look.
+3. **Exakt nach DIN 680 & Deutsche Post Richtlinien:**
+   - **Sichtfenster links:** 90 × 45 mm, 20 mm vom linken Rand, 45 mm vom oberen Rand.
+   - **Frankierzone oben rechts:** 76 × 42 mm (Deutsche Post „Entgelt bezahlt“, Briefmarken-Feld oder Blanko/Freistempler).
+   - **Codierzone unten rechts:** 150 × 15 mm strikt unbedruckt für Strichcodes der Briefsortieranlagen.
+   - **Prüfzonen-Overlay:** Einblendbare Hilfslinien per Klick zur Kontrolle aller Sicherheitsabstände vor dem Drucken.
+4. **Live-Editor im Browser:**
+   - Adressfeld und Referenzangaben können vor dem Druck direkt per Klick im Browser personalisiert werden.
+
+### Druckeinstellungen für den C4-Umschlagdruck
+- **Papierformat:** *DIN C4 (229 × 324 mm)* bzw. Umschlagformat C4.
+- **Ränder:** *Keine* (0 mm).
+- **Skalierung:** *100 %* (Tatsächliche Größe, nicht anpassen, damit Fenstermaße exakt stimmen).
+- **Optionen:** ✅ *Hintergrundgrafiken aktivieren*, ❌ *Kopf- und Fußzeilen deaktivieren*.

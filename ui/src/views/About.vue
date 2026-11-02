@@ -274,7 +274,7 @@ export default {
         }
       }
       const app = apps.find((el) => el.id == this.instanceName);
-      this.version = app.version;
+      this.version = app ? app.version : "-";
       this.loading.version = false;
     },
   },

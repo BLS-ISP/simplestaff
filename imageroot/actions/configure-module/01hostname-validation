@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+
+#
+# SimpleStaff - Validate Traefik route availability before configuring
+#
+
+import json
+import os
+import re
+import sys
+import agent
+
+agent.set_weight(os.path.basename(__file__), 0)
+
+data = json.load(sys.stdin)
+raw_domain = (data.get("domain_name") or "").strip()
+raw_domain = re.sub(r"^https?://", "", raw_domain, flags=re.IGNORECASE)
+domain_name = raw_domain.split("/")[0].strip().lower()
+
+old_domain = (os.environ.get("DOMAIN_NAME") or "").strip().lower()
+
+if domain_name and domain_name != old_domain and agent.http_route_in_use(domain=domain_name):
+    agent.set_status("validation-failed")
+    json.dump(
+        [
+            {
+                "field": "domainName",
+                "parameter": "domain_name",
+                "value": domain_name,
+                "error": "domain_already_used_in_traefik",
+            }
+        ],
+        fp=sys.stdout,
+    )
+    sys.exit(2)

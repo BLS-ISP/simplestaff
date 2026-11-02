@@ -3,7 +3,7 @@
 #
 # SimpleStaff - Send Test Email Action
 # Verifies SMTP connectivity and sends a test email to the administrator.
-# Supports self-signed certificates and internal SMTP servers.
+# Accepts live form parameters from stdin JSON with fallback to saved environment variables.
 #
 
 import os
@@ -28,27 +28,34 @@ try:
 except Exception:
     request = {}
 
-host = os.environ.get('SMTP_HOST', '').strip()
+# Prefer live parameters from UI payload, fallback to persisted environment
+host = (request.get('smtp_host') or os.environ.get('SMTP_HOST', '')).strip()
 if not host:
-    log_error("Kein SMTP-Host konfiguriert. Bitte speichere zuerst die SMTP-Einstellungen.")
+    log_error("Kein SMTP-Host angegeben. Bitte trage einen SMTP-Server ein.")
     sys.exit(1)
 
-port_raw = os.environ.get('SMTP_PORT', '587').strip()
+port_raw = request.get('smtp_port') or os.environ.get('SMTP_PORT', '587')
 try:
-    port = int(port_raw)
-except ValueError:
+    port = int(str(port_raw).strip())
+except (ValueError, TypeError):
     port = 587
 
-user = os.environ.get('SMTP_USER', '').strip()
-password = os.environ.get('SMTP_PASSWORD', '').strip()
-raw_from = os.environ.get('SMTP_FROM', '').strip()
-to_addr = request.get('to') or os.environ.get('SUPER_ADMIN_EMAIL', '').strip() or user
+user = (request.get('smtp_user') if request.get('smtp_user') is not None else os.environ.get('SMTP_USER', '')).strip()
 
-if not to_addr:
-    log_error("Keine Empfängeradresse angegeben.")
+req_password = request.get('smtp_password')
+if req_password is not None and str(req_password).strip() != '':
+    password = str(req_password).strip()
+else:
+    password = os.environ.get('SMTP_PASSWORD', '').strip()
+
+raw_from = (request.get('smtp_from') if request.get('smtp_from') is not None else os.environ.get('SMTP_FROM', '')).strip()
+to_addr = (request.get('to') or os.environ.get('SUPER_ADMIN_EMAIL', '') or user).strip()
+
+if not to_addr or '@' not in to_addr:
+    log_error("Keine gültige Empfängeradresse (Super-Admin E-Mail) angegeben.")
     sys.exit(1)
 
-# Format From address
+# Format From address cleanly (RFC 5322 compliant)
 if '@' in raw_from:
     from_addr = raw_from
 elif raw_from and '@' in user:
@@ -56,10 +63,12 @@ elif raw_from and '@' in user:
 elif '@' in user:
     from_addr = f"SimpleStaff <{user}>"
 else:
-    from_addr = "SimpleStaff <noreply@bls-isp.net>"
+    domain_fallback = os.environ.get('DOMAIN_NAME', '').strip() or 'bls-isp.net'
+    label = raw_from or 'SimpleStaff'
+    from_addr = f"{label} <noreply@{domain_fallback}>"
 
 msg = EmailMessage()
-msg['Subject'] = "SimpleStaff - Test-E-Mail (SMTP-Konfiguration erfolgreich)"
+msg['Subject'] = "SimpleStaff – Test-E-Mail (SMTP-Konfiguration erfolgreich)"
 msg['From'] = from_addr
 msg['To'] = to_addr
 
@@ -68,61 +77,71 @@ html_content = f"""<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <style>
-    body {{ font-family: sans-serif; background: #f8fafc; color: #0f172a; padding: 20px; }}
-    .card {{ background: #ffffff; max-width: 500px; margin: 0 auto; border-radius: 10px; border: 1px solid #e2e8f0; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }}
-    .header {{ color: #4338ca; font-size: 20px; font-weight: bold; margin-bottom: 12px; }}
-    .badge {{ background: #d1fae5; color: #065f46; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 13px; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #0f172a; padding: 20px; }}
+    .card {{ background: #ffffff; max-width: 520px; margin: 0 auto; border-radius: 10px; border: 1px solid #e2e8f0; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }}
+    .header {{ color: #0f62fe; font-size: 20px; font-weight: bold; margin-bottom: 12px; }}
+    .badge {{ display: inline-block; background: #defbe6; color: #0e6027; padding: 4px 10px; border-radius: 6px; font-weight: bold; font-size: 13px; }}
     .footer {{ margin-top: 24px; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 12px; }}
   </style>
 </head>
 <body>
   <div class="card">
     <div class="header">✓ SimpleStaff SMTP-Test</div>
-    <p>Herzlichen Glückwunsch! Die E-Mail-Konfiguration für <strong>SimpleStaff</strong> auf NethServer 8 ist voll funktionsfähig.</p>
-    <p><span class="badge">SMTP Verbindung erfolgreich</span></p>
-    <p style="font-size: 13px; color: #475569;">
-      <strong>Host:</strong> {host}:{port}<br>
-      <strong>Benutzer:</strong> {user or 'Keine Authentifizierung'}<br>
-      <strong>Absender:</strong> {from_addr}
+    <p>Die E-Mail-Konfiguration für <strong>SimpleStaff</strong> auf NethServer 8 wurde erfolgreich getestet.</p>
+    <p><span class="badge">SMTP-Verbindung aktiv</span></p>
+    <p style="font-size: 13px; color: #475569; line-height: 1.6;">
+      <strong>Server:</strong> {host}:{port}<br>
+      <strong>Benutzer:</strong> {user or 'Ohne Authentifizierung'}<br>
+      <strong>Absender:</strong> {from_addr}<br>
+      <strong>Empfänger:</strong> {to_addr}
     </p>
     <div class="footer">
-      Gesendet von SimpleStaff auf NethServer 8.
+      Automatisch gesendet von SimpleStaff auf NethServer 8.
     </div>
   </div>
 </body>
 </html>"""
 
-msg.set_content(f"SimpleStaff Test-E-Mail: Die SMTP-Konfiguration für {host}:{port} ist erfolgreich.")
+msg.set_content(f"SimpleStaff Test-E-Mail: Die SMTP-Konfiguration für {host}:{port} war erfolgreich.")
 msg.add_alternative(html_content, subtype='html')
 
-# Setup SSL context that permits internal/self-signed certificates
+# Allow internal/self-signed certificates common on NethServer 8 mail relays
 context = ssl.create_default_context()
 context.check_hostname = False
 context.verify_mode = ssl.CERT_NONE
 
 try:
-    print(f"Connecting to SMTP server {host}:{port}...", file=sys.stderr)
+    print(f"Connecting to SMTP server {host}:{port} (to={to_addr})...", file=sys.stderr)
     if port == 465:
         with smtplib.SMTP_SSL(host, port, context=context, timeout=15) as server:
+            server.ehlo()
             if user and password:
                 server.login(user, password)
             server.send_message(msg)
     else:
         with smtplib.SMTP(host, port, timeout=15) as server:
             server.ehlo()
-            if port != 25:
-                server.starttls(context=context)
-                server.ehlo()
+            if port != 25 or server.has_extn('STARTTLS'):
+                try:
+                    server.starttls(context=context)
+                    server.ehlo()
+                except smtplib.SMTPNotSupportedError:
+                    if port != 25:
+                        raise
             if user and password:
                 server.login(user, password)
             server.send_message(msg)
 
-    print(json.dumps({"status": "success", "message": f"Test-E-Mail erfolgreich an {to_addr} versendet."}))
+    json.dump(
+        {"status": "success", "message": f"Test-E-Mail erfolgreich an {to_addr} gesendet."},
+        fp=sys.stdout,
+    )
+    sys.stdout.flush()
     sys.exit(0)
 
 except smtplib.SMTPAuthenticationError as e:
-    log_error(f"SMTP Authentifizierungsfehler: Benutzername oder Passwort ungültig ({e})")
+    log_error(f"SMTP-Authentifizierungsfehler: Benutzername oder Passwort ungültig ({e})")
     sys.exit(1)
 except Exception as e:
-    log_error(f"Fehler beim Senden der Test-E-Mail: {e}")
+    log_error(f"Fehler beim Senden der Test-E-Mail über {host}:{port}: {e}")
     sys.exit(1)
