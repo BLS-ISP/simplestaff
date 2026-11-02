@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    branches-ignore:
-      - repomd
     tags:
       - 'v*'
       - '[0-9]+.[0-9]+.[0-9]+*'
@@ -99,7 +97,28 @@ jobs:
             ${{ env.FRONTEND_IMAGE }}:${{ steps.version.outputs.tag }}
             ${{ env.FRONTEND_IMAGE }}:latest
 
-      # ── 3. Build & Push NS8 Module Installer Image (multi-stage: builds UI + packages imageroot) ──
+      # ── 3. Build NS8 Cockpit UI on Runner ──
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install UI dependencies
+        working-directory: ./ui
+        run: yarn install
+
+      - name: Build UI
+        working-directory: ./ui
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
+        run: |
+          yarn lint --fix || true
+          yarn build
+
+      # ── 4. Build & Push NS8 Module Installer Image ──
       - name: Build and push NS8 Module image
         uses: docker/build-push-action@v5
         with:
@@ -112,7 +131,7 @@ jobs:
             ${{ env.MODULE_IMAGE }}:${{ steps.version.outputs.tag }}
             ${{ env.MODULE_IMAGE }}:latest
 
-      # ── 4. Ensure GitHub Release exists ──
+      # ── 5. Ensure GitHub Release exists ──
       - name: Create GitHub Release if missing
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -123,7 +142,7 @@ jobs:
             gh release create "${RELEASE_TAG}" --repo "${{ github.repository }}" --title "Release ${SEMVER}" --generate-notes --latest || true
           fi
 
-      # ── 5. Update NS8 Software Center Repository (repomd branch) ──
+      # ── 6. Update NS8 Software Center Repository (repomd branch) ──
       - name: Update NS8 Software Repository (repomd)
         env:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
