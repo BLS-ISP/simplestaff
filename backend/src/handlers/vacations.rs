@@ -110,10 +110,7 @@ async fn verify_employee_access(
             .await?
             .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-        let emp_email = emp.email.clone().unwrap_or_default();
-        if emp_email.trim().is_empty()
-            || !emp_email.trim().eq_ignore_ascii_case(user_model.email.trim())
-        {
+        if !employee::is_owned_by_user(&emp, &user_model) {
             return Err(AppError::Forbidden(
                 "Sie dürfen nur auf Ihre eigenen Urlaubsanträge zugreifen.".to_string(),
             ));

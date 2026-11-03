@@ -13,6 +13,7 @@ mod m010_add_min_max_staff_to_shift_types;
 mod m011_create_closed_days;
 mod m012_add_holiday_mode_to_shift_types;
 mod m013_create_shift_swaps;
+mod m014_add_username_and_user_employee_link;
 
 pub struct Migrator;
 
@@ -33,6 +34,7 @@ impl MigratorTrait for Migrator {
             Box::new(m011_create_closed_days::Migration),
             Box::new(m012_add_holiday_mode_to_shift_types::Migration),
             Box::new(m013_create_shift_swaps::Migration),
+            Box::new(m014_add_username_and_user_employee_link::Migration),
         ]
     }
 }

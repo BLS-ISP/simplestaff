@@ -1,34 +1,75 @@
 // ============================================
 // Login Page
+// Supports login via Username OR Email + Multi-Tenant selection
 // ============================================
 
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
+import type { TenantChoiceInfo } from '../types';
+
+function roleLabel(role: string): string {
+  switch (role) {
+    case 'super_admin':
+      return 'Super-Admin';
+    case 'admin':
+      return 'Betriebsleiter (Admin)';
+    case 'planner':
+      return 'Schichtleiter (Planner)';
+    default:
+      return 'Mitarbeiter';
+  }
+}
 
 export default function LoginPage() {
   const { t } = useTranslation();
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [tenantChoices, setTenantChoices] = useState<TenantChoiceInfo[] | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const user = await login(email, password);
-      if (user.role === 'super_admin') {
-        navigate('/super-admin');
-      } else {
-        navigate('/');
+      const res = await login(identifier, password);
+      if (res.requiresTenantSelection && res.availableTenants.length > 0) {
+        setTenantChoices(res.availableTenants);
+        return;
+      }
+      if (res.user) {
+        if (res.user.role === 'super_admin') {
+          navigate('/super-admin');
+        } else {
+          navigate('/');
+        }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      setError(err instanceof Error ? err.message : 'Anmeldung fehlgeschlagen');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectTenant = async (tenantId: string) => {
+    setError('');
+    setLoading(true);
+    try {
+      const res = await login(identifier, password, tenantId);
+      if (res.user) {
+        if (res.user.role === 'super_admin') {
+          navigate('/super-admin');
+        } else {
+          navigate('/');
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Mandantenauswahl fehlgeschlagen');
     } finally {
       setLoading(false);
     }
@@ -42,78 +83,131 @@ export default function LoginPage() {
           <h1>
             Simple<span className="text-gradient">Staff</span>
           </h1>
-          <p className="text-secondary">{t('auth.login')}</p>
+          <p className="text-secondary">
+            {tenantChoices ? 'Betrieb / Mandant auswählen' : t('auth.login')}
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          {error && <div className="auth-error">{error}</div>}
+        {tenantChoices ? (
+          <div className="auth-form">
+            {error && <div className="auth-error">{error}</div>}
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', margin: 0, textAlign: 'center' }}>
+              Ihr Zugang ist mehreren Betrieben zugeordnet. Bitte wählen Sie aus, in welchen Betrieb Sie sich einloggen möchten:
+            </p>
 
-          <div className="form-group">
-            <label htmlFor="email">{t('auth.email')}</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="mail@example.com"
-              required
-              autoFocus
-            />
-          </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+              {tenantChoices.map((tc) => (
+                <button
+                  key={tc.tenant_id}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleSelectTenant(tc.tenant_id)}
+                  className="tenant-choice-btn"
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '1.4rem' }}>🏢</span>
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                        {tc.tenant_name}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                        {roleLabel(tc.role)}
+                        {tc.username ? ` • @${tc.username}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ color: 'var(--accent)', fontWeight: 700 }}>→</span>
+                </button>
+              ))}
+            </div>
 
-          <div className="form-group">
-            <label htmlFor="password">{t('auth.password')}</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="btn btn-primary btn-lg w-full"
-            disabled={loading}
-          >
-            {loading ? (
-              <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
-            ) : (
-              t('auth.loginButton')
-            )}
-          </button>
-
-        </form>
-
-        <div className="demo-credentials">
-          <p className="demo-title">Demo-Zugänge (zum Ausfüllen klicken):</p>
-          <div className="demo-buttons">
             <button
               type="button"
+              className="btn btn-secondary w-full"
               onClick={() => {
-                setEmail('admin@test.local');
-                setPassword('admin123');
+                setTenantChoices(null);
+                setError('');
               }}
-              className="demo-btn"
+              disabled={loading}
+              style={{ marginTop: 'var(--space-2)' }}
             >
-              <span>💼 <strong>Manager:</strong> admin@test.local</span>
-              <span className="demo-pw">admin123</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setEmail('peter@test.local');
-                setPassword('start123');
-              }}
-              className="demo-btn"
-            >
-              <span>👥 <strong>Mitarbeiter:</strong> peter@test.local</span>
-              <span className="demo-pw">start123</span>
+              ← Zurück zur Anmeldung
             </button>
           </div>
-        </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="auth-form">
+            {error && <div className="auth-error">{error}</div>}
+
+            <div className="form-group">
+              <label htmlFor="identifier">Benutzername oder E-Mail-Adresse</label>
+              <input
+                id="identifier"
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="z.B. max.hotel-adler oder mail@example.com"
+                required
+                autoFocus
+                autoComplete="username"
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="password">{t('auth.password')}</label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                autoComplete="current-password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary btn-lg w-full"
+              disabled={loading}
+            >
+              {loading ? (
+                <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
+              ) : (
+                t('auth.loginButton')
+              )}
+            </button>
+          </form>
+        )}
+
+        {!tenantChoices && (
+          <div className="demo-credentials">
+            <p className="demo-title">Demo-Zugänge (zum Ausfüllen klicken):</p>
+            <div className="demo-buttons">
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentifier('admin@test.local');
+                  setPassword('admin123');
+                }}
+                className="demo-btn"
+              >
+                <span>💼 <strong>Manager:</strong> admin@test.local</span>
+                <span className="demo-pw">admin123</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentifier('peter@test.local');
+                  setPassword('start123');
+                }}
+                className="demo-btn"
+              >
+                <span>👥 <strong>Mitarbeiter:</strong> peter@test.local</span>
+                <span className="demo-pw">start123</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <style>{`
@@ -131,7 +225,7 @@ export default function LoginPage() {
 
         .auth-container {
           width: 100%;
-          max-width: 420px;
+          max-width: 440px;
           background: var(--glass-bg-heavy);
           backdrop-filter: var(--glass-blur-heavy);
           border: 1px solid var(--glass-border);
@@ -181,20 +275,23 @@ export default function LoginPage() {
           text-align: center;
         }
 
-        .auth-switch {
-          text-align: center;
-          color: var(--text-secondary);
-          font-size: var(--fs-sm);
-          margin-top: var(--space-2);
+        .tenant-choice-btn {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          padding: 12px 16px;
+          border-radius: var(--radius-md);
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--glass-border);
+          cursor: pointer;
+          transition: all 0.2s ease;
         }
 
-        .auth-switch a {
-          color: var(--text-accent);
-          font-weight: var(--fw-semibold);
-        }
-
-        .auth-switch a:hover {
-          text-decoration: underline;
+        .tenant-choice-btn:hover {
+          background: rgba(99, 102, 241, 0.12);
+          border-color: rgba(99, 102, 241, 0.45);
+          transform: translateY(-1px);
         }
 
         .demo-credentials {

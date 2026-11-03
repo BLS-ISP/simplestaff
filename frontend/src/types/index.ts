@@ -10,6 +10,7 @@
 export interface Employee {
   id: string;
   tenant_id: string;
+  user_id?: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -26,6 +27,7 @@ export interface Employee {
 }
 
 export interface CreateEmployeeRequest {
+  user_id?: string;
   first_name?: string;
   last_name?: string;
   email?: string;
@@ -214,14 +216,28 @@ export interface UpdateTenantSettingsRequest {
 
 export type UserRole = 'super_admin' | 'admin' | 'planner' | 'viewer';
 
+export interface TenantChoiceInfo {
+  tenant_id: string;
+  tenant_name: string;
+  tenant_slug: string;
+  user_id: string;
+  username?: string | null;
+  role: UserRole;
+}
+
 export interface User {
   id: string;
   tenant_id: string;
+  tenant_name?: string;
+  tenant_slug?: string;
   email: string;
+  username?: string | null;
   first_name: string;
   last_name: string;
   role: UserRole;
   is_active: boolean;
+  employee_id?: string | null;
+  available_tenants?: TenantChoiceInfo[];
   created_at: string;
   updated_at: string;
 }
@@ -229,6 +245,7 @@ export interface User {
 export interface LoginRequest {
   email: string;
   password: string;
+  tenant_id?: string;
 }
 
 export interface LoginResponse {
@@ -236,9 +253,14 @@ export interface LoginResponse {
   user: {
     id: string;
     email: string;
+    username?: string | null;
     role: string;
     tenant_id: string;
-  };
+    tenant_name?: string;
+    tenant_slug?: string;
+  } | null;
+  requires_tenant_selection?: boolean;
+  available_tenants?: TenantChoiceInfo[];
 }
 
 export interface RegisterRequest {

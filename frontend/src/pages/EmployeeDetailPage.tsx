@@ -96,14 +96,25 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
     has_account: boolean;
     user_id?: string;
     email?: string;
+    username?: string | null;
     role?: string;
     is_active?: boolean;
+    unlinked_users?: {
+      id: string;
+      email: string;
+      username?: string | null;
+      first_name: string;
+      last_name: string;
+      role: string;
+    }[];
   } | null>(null);
   const [loadingAccount, setLoadingAccount] = useState(false);
+  const [accountUsername, setAccountUsername] = useState<string>('');
   const [accountRole, setAccountRole] = useState<string>('viewer');
   const [accountActive, setAccountActive] = useState<boolean>(true);
   const [accountPassword, setAccountPassword] = useState<string>('start123');
   const [resetPassword, setResetPassword] = useState<string>('');
+  const [selectedLinkUserId, setSelectedLinkUserId] = useState<string>('');
   const [savingAccount, setSavingAccount] = useState(false);
 
   const fetchUserAccount = useCallback(async () => {
@@ -111,9 +122,17 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
       setLoadingAccount(true);
       const res = await api.employees.getUserAccount(employee.id);
       setUserAccount(res);
-      if (res.has_account && res.role) {
-        setAccountRole(res.role);
+      if (res.has_account) {
+        if (res.role) setAccountRole(res.role);
         setAccountActive(res.is_active ?? true);
+        setAccountUsername(res.username ?? '');
+      } else {
+        setAccountUsername('');
+        if (res.unlinked_users && res.unlinked_users.length > 0) {
+          setSelectedLinkUserId(res.unlinked_users[0].id);
+        } else {
+          setSelectedLinkUserId('');
+        }
       }
     } catch (e) {
       console.error('Error fetching user account:', e);
@@ -133,13 +152,33 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
     }
     try {
       setSavingAccount(true);
-      await api.employees.createUser(employee.id, accountPassword.trim(), accountRole);
+      await api.employees.createUser(
+        employee.id,
+        accountPassword.trim(),
+        accountRole,
+        accountUsername.trim() || undefined
+      );
       alert(`Benutzerkonto für ${employee.first_name || 'den Mitarbeiter'} wurde erfolgreich als "${accountRole}" erstellt!`);
       setAccountPassword('start123');
       await fetchUserAccount();
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : 'Fehler beim Erstellen des Logins.');
+    } finally {
+      setSavingAccount(false);
+    }
+  };
+
+  const handleLinkExistingUser = async () => {
+    if (!selectedLinkUserId) return;
+    try {
+      setSavingAccount(true);
+      await api.employees.linkUserAccount(employee.id, selectedLinkUserId);
+      alert('Bestehendes Benutzerkonto erfolgreich mit diesem Mitarbeiterprofil verknüpft!');
+      await fetchUserAccount();
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Fehler beim Verknüpfen des Benutzerkontos.');
     } finally {
       setSavingAccount(false);
     }
@@ -153,6 +192,7 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
     try {
       setSavingAccount(true);
       await api.employees.updateUserAccount(employee.id, {
+        username: accountUsername.trim() || undefined,
         role: accountRole,
         is_active: accountActive,
         password: resetPassword.trim() || undefined,
@@ -401,6 +441,42 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
           ) : userAccount?.has_account ? (
             /* Existing User Account Management */
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+              <div style={{
+                padding: '10px 12px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'rgba(99, 102, 241, 0.08)',
+                border: '1px solid rgba(99, 102, 241, 0.25)',
+                fontSize: '0.8rem',
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+              }}>
+                <div>
+                  <strong>🔗 Feste Konto-Verknüpfung:</strong> <span style={{ fontFamily: 'monospace' }}>{userAccount.user_id}</span>
+                </div>
+                {userAccount.email && (
+                  <div>
+                    <strong>Login-E-Mail:</strong> {userAccount.email}
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}>Eindeutiger Benutzername (Login)</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={accountUsername}
+                  onChange={(e) => setAccountUsername(e.target.value)}
+                  disabled={!isAdmin}
+                  placeholder="z.B. max.hotel-adler"
+                />
+                <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                  Der Mitarbeiter kann sich wahlweise mit diesem eindeutigen Benutzernamen oder seiner E-Mail anmelden.
+                </span>
+              </div>
+
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={labelStyle}>Rolle / Berechtigungsstufe</label>
                 <select
@@ -461,8 +537,54 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
               )}
             </div>
           ) : (
-            /* Create New User Account */
+            /* Create New User Account OR Link Existing Account */
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+              {isAdmin && userAccount?.unlinked_users && userAccount.unlinked_users.length > 0 && (
+                <div style={{
+                  padding: '12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(99, 102, 241, 0.08)',
+                  border: '1px solid rgba(99, 102, 241, 0.25)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}>
+                  <label style={{ ...labelStyle, margin: 0, color: 'var(--text-primary)', fontWeight: 600 }}>
+                    🔗 Bestehendes Konto (z. B. Master-Account) verknüpfen
+                  </label>
+                  <select
+                    className="input"
+                    value={selectedLinkUserId}
+                    onChange={(e) => setSelectedLinkUserId(e.target.value)}
+                  >
+                    {userAccount.unlinked_users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.first_name} {u.last_name} ({u.email}{u.username ? ` / @${u.username}` : ''} – {u.role})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleLinkExistingUser}
+                    disabled={savingAccount || !selectedLinkUserId}
+                  >
+                    Mit diesem Mitarbeiterprofil verknüpfen
+                  </button>
+                </div>
+              )}
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label style={labelStyle}>Eindeutiger Benutzername (Optional)</label>
+                <input
+                  className="input"
+                  type="text"
+                  value={accountUsername}
+                  onChange={(e) => setAccountUsername(e.target.value)}
+                  placeholder="Leer lassen für automatische Generierung"
+                />
+              </div>
+
               <div className="form-group" style={{ margin: 0 }}>
                 <label style={labelStyle}>Rolle / Berechtigungsstufe</label>
                 <select
@@ -501,17 +623,17 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
                 type="button"
                 className="btn btn-neutral"
                 onClick={handleCreateLogin}
-                disabled={savingAccount || !employee.email}
+                disabled={savingAccount || (!employee.email && !accountUsername.trim())}
                 style={{ width: '100%', height: '42px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                {savingAccount ? 'Schaltet frei...' : 'Benutzerkonto freischalten'}
+                {savingAccount ? 'Schaltet frei...' : 'Neues Benutzerkonto freischalten'}
               </button>
             </div>
           )}
 
-          {!employee.email && (
-            <p style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: 'var(--space-xs)', margin: 0 }}>
-              * Um ein Benutzerkonto zu verwalten, muss oben eine E-Mail-Adresse hinterlegt sein.
+          {!employee.email && !userAccount?.has_account && !accountUsername.trim() && (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: 'var(--space-xs)', margin: 0 }}>
+              * Tipp: Hinterlegen Sie eine E-Mail-Adresse oder vergeben Sie direkt einen eindeutigen Benutzernamen.
             </p>
           )}
         </div>

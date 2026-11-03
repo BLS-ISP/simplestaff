@@ -172,6 +172,12 @@ const auth = {
 
   me: () => request<User>('/auth/me'),
 
+  switchTenant: (data: { tenant_id: string; password?: string }) =>
+    request<LoginResponse>('/auth/switch-tenant', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   changePassword: (data: { current_password: string; new_password: string }) =>
     request<{ success: boolean; message: string }>('/auth/change-password', {
       method: 'POST',
@@ -199,6 +205,12 @@ const employees = {
   getMe: () =>
     request<Employee>('/employees/me'),
 
+  createSelfProfile: (data?: { weekly_hours?: number; vacation_days_per_year?: number }) =>
+    request<Employee>('/employees/self-profile', {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
+
   updateMyPreferences: (shift_preferences: Record<string, number>) =>
     request<Employee>('/employees/me/preferences', {
       method: 'PUT',
@@ -220,10 +232,16 @@ const employees = {
   delete: (id: string) =>
     request<Employee>(`/employees/${id}`, { method: 'DELETE' }),
 
-  createUser: (id: string, password?: string, role?: string) =>
+  createUser: (id: string, password?: string, role?: string, username?: string) =>
     request<any>(`/employees/${id}/create-user`, {
       method: 'POST',
-      body: JSON.stringify({ password, role }),
+      body: JSON.stringify({ password, role, username }),
+    }),
+
+  linkUserAccount: (id: string, user_id: string) =>
+    request<Employee>(`/employees/${id}/link-user`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id }),
     }),
 
   getUserAccount: (id: string) =>
@@ -231,11 +249,20 @@ const employees = {
       has_account: boolean;
       user_id?: string;
       email?: string;
+      username?: string | null;
       role?: string;
       is_active?: boolean;
+      unlinked_users?: {
+        id: string;
+        email: string;
+        username?: string | null;
+        first_name: string;
+        last_name: string;
+        role: string;
+      }[];
     }>(`/employees/${id}/user-account`),
 
-  updateUserAccount: (id: string, data: { role?: string; is_active?: boolean; password?: string }) =>
+  updateUserAccount: (id: string, data: { username?: string; role?: string; is_active?: boolean; password?: string }) =>
     request<any>(`/employees/${id}/user-account`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -539,9 +566,13 @@ export interface CreateTenantAdminRequest {
   slug: string;
   max_employees: number | null;
   manager_email: string;
+  manager_username?: string;
   manager_password: string;
   manager_first_name: string;
   manager_last_name: string;
+  create_manager_employee?: boolean;
+  manager_weekly_hours?: number;
+  manager_vacation_days?: number;
 }
 
 export interface UpdateTenantAdminRequest {

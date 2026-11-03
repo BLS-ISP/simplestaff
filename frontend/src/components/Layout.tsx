@@ -22,9 +22,10 @@ const navItems = [
 
 export default function Layout() {
   const { t, i18n } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user, logout, switchTenant } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [switchingTenant, setSwitchingTenant] = useState(false);
   const [pwModalOpen, setPwModalOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -86,6 +87,19 @@ export default function Layout() {
     navigate('/login');
   };
 
+  const handleSwitchTenant = async (targetTenantId: string) => {
+    if (!user || targetTenantId === user.tenant_id || switchingTenant) return;
+    try {
+      setSwitchingTenant(true);
+      await switchTenant(targetTenantId);
+      window.location.href = '/dashboard';
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Mandantenwechsel fehlgeschlagen.');
+    } finally {
+      setSwitchingTenant(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
       {/* Mobile Menu Toggle */}
@@ -110,13 +124,37 @@ export default function Layout() {
         {/* Logo */}
         <div className="sidebar-logo">
           <div className="sidebar-logo-icon">S</div>
-          <div>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <h1 className="sidebar-logo-text">
               Simple<span className="text-gradient">Staff</span>
             </h1>
-            <p className="sidebar-logo-subtitle">Shift Management</p>
+            <p className="sidebar-logo-subtitle" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {user?.tenant_name ? `🏢 ${user.tenant_name}` : 'Shift Management'}
+            </p>
           </div>
         </div>
+
+        {/* Multi-Tenant Switcher (shown when user has accounts in multiple tenants) */}
+        {user?.available_tenants && user.available_tenants.length > 1 && (
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--glass-border)', background: 'rgba(99, 102, 241, 0.05)' }}>
+            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-secondary)', marginBottom: 4 }}>
+              🏢 Betrieb wechseln
+            </label>
+            <select
+              className="input"
+              value={user.tenant_id}
+              disabled={switchingTenant}
+              onChange={(e) => handleSwitchTenant(e.target.value)}
+              style={{ width: '100%', padding: '6px 8px', fontSize: '0.82rem', height: 34 }}
+            >
+              {user.available_tenants.map((tc) => (
+                <option key={tc.tenant_id} value={tc.tenant_id}>
+                  {tc.tenant_name} ({tc.role})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Navigation */}
         <nav className="sidebar-nav">
@@ -165,7 +203,9 @@ export default function Layout() {
                 <span className="sidebar-user-name">
                   {user.first_name} {user.last_name}
                 </span>
-                <span className="sidebar-user-role">{user.role}</span>
+                <span className="sidebar-user-role">
+                  {user.role}{user.username ? ` • @${user.username}` : ''}
+                </span>
               </div>
             </div>
           )}

@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import type { Employee, PaginatedResponse, CreateEmployeeRequest } from '../types';
+import { useAuth } from '../hooks/useAuth';
 
 // ── Inline SVG Icons ──
 
@@ -316,6 +317,7 @@ function AddEmployeeModal({ open, onClose, onSave, saving }: AddModalProps) {
 export default function EmployeesPage() {
   const { t: _t } = useTranslation();
   const navigate = useNavigate();
+  const { user, refreshUser } = useAuth();
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [total, setTotal] = useState(0);
@@ -327,6 +329,7 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [creatingSelf, setCreatingSelf] = useState(false);
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -367,11 +370,36 @@ export default function EmployeesPage() {
       await api.employees.create(data);
       setModalOpen(false);
       await fetchEmployees();
+      await refreshUser();
     } catch (err) {
       console.error('Create employee error:', err);
       alert(err instanceof Error ? err.message : 'Fehler beim Erstellen');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const hasOwnEmployeeProfile = useMemo(() => {
+    if (!user) return true;
+    if (user.employee_id) return true;
+    return employees.some(
+      (e) =>
+        e.user_id === user.id ||
+        (e.email && user.email && e.email.trim().toLowerCase() === user.email.trim().toLowerCase())
+    );
+  }, [user, employees]);
+
+  const handleCreateSelfProfile = async () => {
+    try {
+      setCreatingSelf(true);
+      const emp = await api.employees.createSelfProfile({ weekly_hours: 40, vacation_days_per_year: 30 });
+      await refreshUser();
+      await fetchEmployees();
+      navigate(`/employees/${emp.id}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Fehler beim Anlegen des eigenen Mitarbeiterprofils.');
+    } finally {
+      setCreatingSelf(false);
     }
   };
 
@@ -407,14 +435,28 @@ export default function EmployeesPage() {
             {total} {total === 1 ? 'Mitarbeiter' : 'Mitarbeiter'} insgesamt
           </p>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => setModalOpen(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}
-        >
-          <PlusIcon />
-          Neuer Mitarbeiter
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+          {user && (user.role === 'admin' || user.role === 'planner') && !hasOwnEmployeeProfile && (
+            <button
+              className="btn btn-secondary"
+              onClick={handleCreateSelfProfile}
+              disabled={creatingSelf}
+              title="Erstellt ein direkt mit Ihrem Master-/Manager-Konto verknüpftes Mitarbeiterprofil für den Dienstplan"
+              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}
+            >
+              <span>👤</span>
+              {creatingSelf ? 'Wird angelegt…' : 'Mich als Mitarbeiter im Dienstplan anlegen'}
+            </button>
+          )}
+          <button
+            className="btn btn-primary"
+            onClick={() => setModalOpen(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}
+          >
+            <PlusIcon />
+            Neuer Mitarbeiter
+          </button>
+        </div>
       </div>
 
       {/* ── Search Bar ── */}
@@ -567,6 +609,9 @@ export default function EmployeesPage() {
 
               {/* Badges */}
               <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+                {user && emp.user_id === user.id && (
+                  <span className="badge badge-warning">👑 Mein Profil</span>
+                )}
                 <span className="badge badge-info">
                   Wochenstunden: {emp.weekly_hours} h
                 </span>

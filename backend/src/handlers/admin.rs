@@ -15,7 +15,7 @@ use crate::AppState;
 use crate::errors::AppError;
 use crate::middleware::auth::AuthUser;
 use crate::middleware::tenant::set_tenant_context;
-use crate::models::{tenant, user};
+use crate::models::{employee, tenant, user};
 
 #[derive(Debug, Serialize)]
 pub struct TenantAdminResponse {
@@ -33,9 +33,13 @@ pub struct CreateTenantRequest {
     pub slug: String,
     pub max_employees: Option<u64>,
     pub manager_email: String,
+    pub manager_username: Option<String>,
     pub manager_password: String,
     pub manager_first_name: String,
     pub manager_last_name: String,
+    pub create_manager_employee: Option<bool>,
+    pub manager_weekly_hours: Option<f32>,
+    pub manager_vacation_days: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -89,7 +93,7 @@ pub async fn list_tenants(
     Ok(Json(res))
 }
 
-/// POST /api/admin/tenants – Create tenant + respective manager
+/// POST /api/admin/tenants – Create tenant + respective manager (and optional employee profile)
 pub async fn create_tenant(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -105,6 +109,7 @@ pub async fn create_tenant(
     }
 
     let tenant_id = Uuid::new_v4();
+    let manager_user_id = Uuid::new_v4();
     let now = chrono::Utc::now().fixed_offset();
 
     // Hash the password with Argon2
@@ -132,11 +137,29 @@ pub async fn create_tenant(
         ));
     }
 
+    // Validate or generate manager username
+    let manager_username = if let Some(ref raw_uname) = payload
+        .manager_username
+        .as_ref()
+        .filter(|s| !s.trim().is_empty())
+    {
+        let validated = user::validate_username_format(raw_uname)?;
+        if user::is_username_taken(&txn, &validated, None).await? {
+            return Err(AppError::Conflict(
+                "Dieser Benutzername ist bereits vergeben.".to_string(),
+            ));
+        }
+        validated
+    } else {
+        user::generate_unique_username(&txn, payload.manager_email.trim(), payload.slug.trim(), None)
+            .await?
+    };
+
     // Create the tenant
     let new_tenant = tenant::Model {
         id: tenant_id,
-        name: payload.name.clone(),
-        slug: payload.slug.clone(),
+        name: payload.name.trim().to_string(),
+        slug: payload.slug.trim().to_string(),
         settings,
         created_at: now,
         updated_at: now,
@@ -144,23 +167,53 @@ pub async fn create_tenant(
     let active_tenant: tenant::ActiveModel = new_tenant.clone().into();
     active_tenant.insert(&txn).await?;
 
-    // Set the tenant context on the transaction before inserting user (since users has RLS)
+    // Set the tenant context on the transaction before inserting user/employee (since both have RLS)
     set_tenant_context(&txn, &tenant_id).await?;
+
+    let clean_email = payload.manager_email.trim().to_string();
+    let first_name = payload.manager_first_name.trim().to_string();
+    let last_name = payload.manager_last_name.trim().to_string();
 
     // Create the manager user (role "admin")
     let new_manager = user::ActiveModel {
-        id: Set(Uuid::new_v4()),
+        id: Set(manager_user_id),
         tenant_id: Set(tenant_id),
-        email: Set(payload.manager_email),
+        email: Set(clean_email.clone()),
+        username: Set(Some(manager_username)),
         password_hash: Set(password_hash),
-        first_name: Set(payload.manager_first_name),
-        last_name: Set(payload.manager_last_name),
+        first_name: Set(first_name.clone()),
+        last_name: Set(last_name.clone()),
         role: Set("admin".to_string()),
         is_active: Set(true),
         created_at: Set(now),
         updated_at: Set(now),
     };
     new_manager.insert(&txn).await?;
+
+    // Optionally create a linked employee profile so the master account can also be scheduled on shifts
+    if payload.create_manager_employee.unwrap_or(false) {
+        let vac_days = payload.manager_vacation_days.unwrap_or(30);
+        let weekly_hours = payload.manager_weekly_hours.unwrap_or(40.0);
+        let emp_active = employee::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            tenant_id: Set(tenant_id),
+            user_id: Set(Some(manager_user_id)),
+            first_name: Set(Some(if first_name.is_empty() { "Betriebsleiter".to_string() } else { first_name })),
+            last_name: Set(Some(last_name)),
+            email: Set(Some(clean_email)),
+            phone: Set(None),
+            weekly_hours: Set(weekly_hours),
+            monthly_hours: Set(None),
+            yearly_hours: Set(None),
+            vacation_days_per_year: Set(vac_days),
+            vacation_days_remaining: Set(vac_days as f32),
+            shift_preferences: Set(serde_json::json!({})),
+            is_active: Set(true),
+            created_at: Set(now),
+            updated_at: Set(now),
+        };
+        emp_active.insert(&txn).await?;
+    }
 
     txn.commit().await?;
 
@@ -241,8 +294,6 @@ pub async fn delete_tenant(
         ));
     }
 
-    // Cascade delete is handled at the database layer (FOREIGN KEY ... ON DELETE CASCADE).
-    // So deleting from tenants automatically cleans up everything.
     let result = tenant::Entity::delete_by_id(id)
         .exec(&state.db)
         .await?;

@@ -603,18 +603,8 @@ pub async fn mark_sick(
                     .await?
                     .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-                let all_emps = crate::models::employee::Entity::find()
-                    .filter(crate::models::employee::Column::TenantId.eq(tenant_id))
-                    .all(txn)
-                    .await?;
-                let my_emp = all_emps
-                    .into_iter()
-                    .find(|e| {
-                        e.email
-                            .as_deref()
-                            .map(|em| !em.trim().is_empty() && em.trim().eq_ignore_ascii_case(user_record.email.trim()))
-                            .unwrap_or(false)
-                    })
+                let my_emp = crate::models::employee::find_for_user(txn, tenant_id, &user_record)
+                    .await?
                     .ok_or_else(|| AppError::Forbidden("Mitarbeiterprofil nicht gefunden.".to_string()))?;
 
                 if existing.employee_id != my_emp.id {
@@ -719,18 +709,8 @@ pub async fn mark_sick_range(
                     .await?
                     .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-                let all_emps = crate::models::employee::Entity::find()
-                    .filter(crate::models::employee::Column::TenantId.eq(tenant_id))
-                    .all(txn)
-                    .await?;
-                let my_emp = all_emps
-                    .into_iter()
-                    .find(|e| {
-                        e.email
-                            .as_deref()
-                            .map(|em| !em.trim().is_empty() && em.trim().eq_ignore_ascii_case(user_record.email.trim()))
-                            .unwrap_or(false)
-                    })
+                let my_emp = crate::models::employee::find_for_user(txn, tenant_id, &user_record)
+                    .await?
                     .ok_or_else(|| AppError::Forbidden("Mitarbeiterprofil nicht gefunden.".to_string()))?;
 
                 if let Some(requested_id) = body.employee_id {

@@ -25,6 +25,9 @@ pub struct Claims {
     pub role: String,
     /// Expiry (epoch seconds).
     pub exp: usize,
+    /// User IDs across tenants that have been password-verified in this session.
+    #[serde(default)]
+    pub verified_user_ids: Vec<Uuid>,
 }
 
 // ---------------------------------------------------------------------------
@@ -37,6 +40,7 @@ pub struct AuthUser {
     pub user_id: Uuid,
     pub tenant_id: Uuid,
     pub role: String,
+    pub verified_user_ids: Vec<Uuid>,
 }
 
 impl<S> FromRequestParts<S> for AuthUser
@@ -115,10 +119,16 @@ where
             ));
         }
 
+        let mut verified = claims.verified_user_ids;
+        if !verified.contains(&user_id) {
+            verified.push(user_id);
+        }
+
         Ok(AuthUser {
             user_id,
             tenant_id,
             role: live_user.role,
+            verified_user_ids: verified,
         })
     }
 }
@@ -134,6 +144,21 @@ pub fn create_jwt(
     role: &str,
     secret: &str,
 ) -> Result<String, AppError> {
+    create_jwt_with_verified(user_id, tenant_id, role, vec![user_id], secret)
+}
+
+/// Create a signed JWT valid for 24 hours with a list of password-verified user IDs across tenants.
+pub fn create_jwt_with_verified(
+    user_id: Uuid,
+    tenant_id: Uuid,
+    role: &str,
+    mut verified_user_ids: Vec<Uuid>,
+    secret: &str,
+) -> Result<String, AppError> {
+    if !verified_user_ids.contains(&user_id) {
+        verified_user_ids.push(user_id);
+    }
+
     let exp = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
         .expect("valid timestamp")
@@ -144,6 +169,7 @@ pub fn create_jwt(
         tenant_id: tenant_id.to_string(),
         role: role.to_string(),
         exp,
+        verified_user_ids,
     };
 
     encode(

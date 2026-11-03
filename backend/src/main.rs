@@ -75,7 +75,7 @@ async fn seed_super_admin(db: &DatabaseConnection, config: &Config) -> Result<()
         // Synchronize email and password_hash so credential changes in NS8 Settings take effect.
         db.execute(Statement::from_sql_and_values(
             backend,
-            "UPDATE users SET email = $1, password_hash = $2, is_active = true, updated_at = $3 WHERE id = $4",
+            "UPDATE users SET email = $1, username = COALESCE(NULLIF(BTRIM(username), ''), 'superadmin'), password_hash = $2, is_active = true, updated_at = $3 WHERE id = $4",
             [
                 Value::from(config.super_admin_email.clone()),
                 Value::from(password_hash),
@@ -126,8 +126,8 @@ async fn seed_super_admin(db: &DatabaseConnection, config: &Config) -> Result<()
     // Insert super admin user.
     db.execute(Statement::from_sql_and_values(
         backend,
-        "INSERT INTO users (id, tenant_id, email, password_hash, role, first_name, last_name, is_active, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, 'super_admin', 'Super', 'Admin', true, $5, $6)",
+        "INSERT INTO users (id, tenant_id, email, username, password_hash, role, first_name, last_name, is_active, created_at, updated_at) \
+         VALUES ($1, $2, $3, 'superadmin', $4, 'super_admin', 'Super', 'Admin', true, $5, $6)",
         [
             Value::from(user_id),
             Value::from(effective_tenant_id),

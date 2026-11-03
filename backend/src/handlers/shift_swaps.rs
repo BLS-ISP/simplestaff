@@ -137,23 +137,6 @@ pub struct ApproveSwapRequest {
     pub backup_employee_id: Option<Uuid>,
 }
 
-async fn find_employee_by_email(
-    txn: &sea_orm::DatabaseTransaction,
-    tenant_id: Uuid,
-    email: &str,
-) -> Result<Option<employee::Model>, AppError> {
-    let all_emps = employee::Entity::find()
-        .filter(employee::Column::TenantId.eq(tenant_id))
-        .all(txn)
-        .await?;
-    Ok(all_emps.into_iter().find(|e| {
-        e.email
-            .as_deref()
-            .map(|em| !em.trim().is_empty() && em.trim().eq_ignore_ascii_case(email.trim()))
-            .unwrap_or(false)
-    }))
-}
-
 /// POST /api/shift-swaps – release a shift for swap
 pub async fn create_shift_swap(
     State(state): State<AppState>,
@@ -174,7 +157,7 @@ pub async fn create_shift_swap(
                 .await?
                 .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-            let emp = find_employee_by_email(txn, tenant_id, &user_record.email).await?;
+            let emp = employee::find_for_user(txn, tenant_id, &user_record).await?;
 
             let assignment = shift_assignment::Entity::find()
                 .filter(shift_assignment::Column::Id.eq(assignment_id))
@@ -266,7 +249,7 @@ pub async fn claim_shift_swap(
                 .await?
                 .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-            let emp = find_employee_by_email(txn, tenant_id, &user_record.email)
+            let emp = employee::find_for_user(txn, tenant_id, &user_record)
                 .await?
                 .ok_or_else(|| AppError::Forbidden("Für Ihr Konto wurde kein Mitarbeiterprofil gefunden. Sie können keine Schichten übernehmen.".to_string()))?;
             Ok(emp.id)
@@ -655,7 +638,7 @@ pub async fn delete_shift_swap(
                     .await?
                     .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-                let emp = find_employee_by_email(txn, tenant_id, &user_record.email)
+                let emp = employee::find_for_user(txn, tenant_id, &user_record)
                     .await?
                     .ok_or_else(|| AppError::Forbidden("Mitarbeiterprofil nicht gefunden".to_string()))?;
 

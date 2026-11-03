@@ -149,9 +149,7 @@ async fn ensure_own_or_manager_profile(
                 .await?;
 
             if let Some(emp) = emp_model {
-                let emp_email = emp.email.unwrap_or_default();
-                Ok(!emp_email.trim().is_empty()
-                    && emp_email.trim().eq_ignore_ascii_case(user_model.email.trim()))
+                Ok(employee::is_owned_by_user(&emp, &user_model))
             } else {
                 Ok(false)
             }

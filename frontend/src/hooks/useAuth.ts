@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api, setAuthToken, getAuthToken } from '../api/client';
-import type { User, UserRole } from '../types';
+import type { User, UserRole, TenantChoiceInfo } from '../types';
 
 interface AuthState {
   user: User | null;
@@ -13,9 +13,14 @@ interface AuthState {
   error: string | null;
 }
 
+export interface LoginResult {
+  user: User | null;
+  requiresTenantSelection: boolean;
+  availableTenants: TenantChoiceInfo[];
+}
+
 export function useAuth() {
   const [state, setState] = useState<AuthState>(() => {
-    // Try to restore user from localStorage on initial mount
     const storedUser = localStorage.getItem('simplestaff_user');
     return {
       user: storedUser ? JSON.parse(storedUser) : null,
@@ -24,38 +29,69 @@ export function useAuth() {
     };
   });
 
-  // Validate token on mount if we have one but no cached user
-  useEffect(() => {
+  const refreshUser = useCallback(async () => {
     const token = getAuthToken();
     if (!token) {
       setState({ user: null, loading: false, error: null });
-      return;
+      return null;
     }
-
-    // If we already have a cached user, just validate in background
-    api.auth.me()
-      .then((user) => {
-        localStorage.setItem('simplestaff_user', JSON.stringify(user));
-        setState({ user, loading: false, error: null });
-      })
-      .catch(() => {
-        setAuthToken(null);
-        localStorage.removeItem('simplestaff_user');
-        setState({ user: null, loading: false, error: null });
-      });
+    try {
+      const user = await api.auth.me();
+      localStorage.setItem('simplestaff_user', JSON.stringify(user));
+      setState({ user, loading: false, error: null });
+      return user;
+    } catch {
+      setAuthToken(null);
+      localStorage.removeItem('simplestaff_user');
+      setState({ user: null, loading: false, error: null });
+      return null;
+    }
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  useEffect(() => {
+    refreshUser();
+  }, [refreshUser]);
+
+  const login = useCallback(async (email: string, password: string, tenant_id?: string): Promise<LoginResult> => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      const response = await api.auth.login({ email, password });
+      const response = await api.auth.login({ email, password, tenant_id });
+      if (response.requires_tenant_selection) {
+        setState((prev) => ({ ...prev, loading: false, error: null }));
+        return {
+          user: null,
+          requiresTenantSelection: true,
+          availableTenants: response.available_tenants || [],
+        };
+      }
+
+      setAuthToken(response.token);
+      const user = await api.auth.me();
+      localStorage.setItem('simplestaff_user', JSON.stringify(user));
+      setState({ user, loading: false, error: null });
+      return {
+        user,
+        requiresTenantSelection: false,
+        availableTenants: response.available_tenants || [],
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Login fehlgeschlagen';
+      setState((prev) => ({ ...prev, loading: false, error: message }));
+      throw err;
+    }
+  }, []);
+
+  const switchTenant = useCallback(async (tenant_id: string, password?: string): Promise<User> => {
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const response = await api.auth.switchTenant({ tenant_id, password });
       setAuthToken(response.token);
       const user = await api.auth.me();
       localStorage.setItem('simplestaff_user', JSON.stringify(user));
       setState({ user, loading: false, error: null });
       return user;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Login fehlgeschlagen';
+      const message = err instanceof Error ? err.message : 'Mandantenwechsel fehlgeschlagen';
       setState((prev) => ({ ...prev, loading: false, error: message }));
       throw err;
     }
@@ -108,6 +144,8 @@ export function useAuth() {
     loading: state.loading,
     error: state.error,
     login,
+    switchTenant,
+    refreshUser,
     register,
     logout,
     hasRole,

@@ -22,9 +22,13 @@ export default function SuperAdminPage() {
   const [slug, setSlug] = useState('');
   const [maxEmployees, setMaxEmployees] = useState<number | ''>('');
   const [managerEmail, setManagerEmail] = useState('');
+  const [managerUsername, setManagerUsername] = useState('');
   const [managerPassword, setManagerPassword] = useState('');
   const [managerFirstName, setManagerFirstName] = useState('');
   const [managerLastName, setManagerLastName] = useState('');
+  const [createManagerEmployee, setCreateManagerEmployee] = useState(true);
+  const [managerWeeklyHours, setManagerWeeklyHours] = useState<number>(40);
+  const [managerVacationDays, setManagerVacationDays] = useState<number>(30);
 
   // Form Fields - Edit Tenant
   const [editName, setEditName] = useState('');
@@ -57,9 +61,13 @@ export default function SuperAdminPage() {
     setSlug('');
     setMaxEmployees('');
     setManagerEmail('');
+    setManagerUsername('');
     setManagerPassword('');
     setManagerFirstName('');
     setManagerLastName('');
+    setCreateManagerEmployee(true);
+    setManagerWeeklyHours(40);
+    setManagerVacationDays(30);
     setActionError(null);
     setIsCreateOpen(true);
   };
@@ -88,9 +96,13 @@ export default function SuperAdminPage() {
         slug: slug.toLowerCase().replace(/[^a-z0-9-]/g, ''),
         max_employees: maxEmployees === '' ? null : Number(maxEmployees),
         manager_email: managerEmail,
+        manager_username: managerUsername.trim() || undefined,
         manager_password: managerPassword,
         manager_first_name: managerFirstName,
         manager_last_name: managerLastName,
+        create_manager_employee: createManagerEmployee,
+        manager_weekly_hours: managerWeeklyHours,
+        manager_vacation_days: managerVacationDays,
       });
       setIsCreateOpen(false);
       fetchTenants();
@@ -409,7 +421,7 @@ export default function SuperAdminPage() {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)', marginBottom: 'var(--space-md)' }}>
                   <div className="form-group">
                     <label>Manager-E-Mail *</label>
                     <input
@@ -421,15 +433,67 @@ export default function SuperAdminPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label>Manager-Passwort *</label>
+                    <label>Eindeutiger Benutzername (Optional)</label>
                     <input
-                      type="password"
-                      required
-                      value={managerPassword}
-                      onChange={(e) => setManagerPassword(e.target.value)}
-                      placeholder="Sicheres Passwort"
+                      type="text"
+                      value={managerUsername}
+                      onChange={(e) => setManagerUsername(e.target.value)}
+                      placeholder={slug ? `z.B. admin.${slug}` : 'Automatisch generieren'}
                     />
                   </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 'var(--space-md)' }}>
+                  <label>Manager-Passwort *</label>
+                  <input
+                    type="password"
+                    required
+                    value={managerPassword}
+                    onChange={(e) => setManagerPassword(e.target.value)}
+                    placeholder="Sicheres Passwort"
+                  />
+                </div>
+
+                <div style={{
+                  padding: '12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(99, 102, 241, 0.08)',
+                  border: '1px solid rgba(99, 102, 241, 0.25)',
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    <input
+                      type="checkbox"
+                      checked={createManagerEmployee}
+                      onChange={(e) => setCreateManagerEmployee(e.target.checked)}
+                      style={{ width: 16, height: 16, accentColor: 'var(--accent)' }}
+                    />
+                    Master-Account gleichzeitig als Mitarbeiter im Dienstplan anlegen
+                  </label>
+                  {createManagerEmployee && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)', marginTop: '10px' }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label style={{ fontSize: '0.78rem' }}>Wochenstunden (Soll)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={60}
+                          step={0.5}
+                          value={managerWeeklyHours}
+                          onChange={(e) => setManagerWeeklyHours(parseFloat(e.target.value) || 0)}
+                        />
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label style={{ fontSize: '0.78rem' }}>Urlaubstage / Jahr</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={60}
+                          value={managerVacationDays}
+                          onChange={(e) => setManagerVacationDays(parseInt(e.target.value) || 0)}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
