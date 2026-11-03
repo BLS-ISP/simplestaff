@@ -50,9 +50,12 @@ pub async fn run_auto_schedule(
     start_date: NaiveDate,
     end_date: NaiveDate,
 ) -> Result<(), AppError> {
+    let txn = db.begin().await?;
+    set_tenant_context(&txn, tenant_id).await?;
+
     // 1. Fetch Tenant details & Settings
     let tenant = crate::models::tenant::Entity::find_by_id(*tenant_id)
-        .one(db)
+        .one(&txn)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Tenant {tenant_id} not found")))?;
 
@@ -75,12 +78,12 @@ pub async fn run_auto_schedule(
     let active_employees = employee::Entity::find()
         .filter(employee::Column::TenantId.eq(*tenant_id))
         .filter(employee::Column::IsActive.eq(true))
-        .all(db)
+        .all(&txn)
         .await?;
 
     let all_shift_types = ShiftType::find()
         .filter(shift_type::Column::TenantId.eq(*tenant_id))
-        .all(db)
+        .all(&txn)
         .await?;
     let active_shift_types: Vec<&shift_type::Model> = all_shift_types
         .iter()
@@ -95,21 +98,21 @@ pub async fn run_auto_schedule(
             employee_vacation::Column::StartDate.lte(end_date)
                 .and(employee_vacation::Column::EndDate.gte(start_date)),
         )
-        .all(db)
+        .all(&txn)
         .await?;
 
     let blocked_days = employee_blocked_day::Entity::find()
         .filter(employee_blocked_day::Column::TenantId.eq(*tenant_id))
         .filter(employee_blocked_day::Column::BlockedDate.gte(start_date))
         .filter(employee_blocked_day::Column::BlockedDate.lte(end_date))
-        .all(db)
+        .all(&txn)
         .await?;
 
     let closed_days = closed_day::Entity::find()
         .filter(closed_day::Column::TenantId.eq(*tenant_id))
         .filter(closed_day::Column::ClosedDate.gte(start_date))
         .filter(closed_day::Column::ClosedDate.lte(end_date))
-        .all(db)
+        .all(&txn)
         .await?;
 
     // 4. Determine calendar weeks for the range (plus 1 border day before/after) to load existing assignments
@@ -123,13 +126,13 @@ pub async fn run_auto_schedule(
         .filter(shift_assignment::Column::TenantId.eq(*tenant_id))
         .filter(shift_assignment::Column::AssignmentDate.gte(query_start))
         .filter(shift_assignment::Column::AssignmentDate.lte(query_end))
-        .all(db)
+        .all(&txn)
         .await?;
 
     let active_swaps = shift_swap::Entity::find()
         .filter(shift_swap::Column::TenantId.eq(*tenant_id))
         .filter(shift_swap::Column::Status.ne("cancelled"))
-        .all(db)
+        .all(&txn)
         .await?;
     let swapped_assignment_ids: std::collections::HashSet<Uuid> =
         active_swaps.into_iter().map(|s| s.assignment_id).collect();
@@ -341,10 +344,7 @@ pub async fn run_auto_schedule(
         current_date = current_date.succ_opt().unwrap();
     }
 
-    // 8. DB Transaction to delete replaceable planned assignments and insert new assignments in range
-    let txn = db.begin().await?;
-    set_tenant_context(&txn, tenant_id).await?;
-
+    // 8. Delete replaceable planned assignments and insert new assignments in range within the same transaction
     if !deletable_assignment_ids.is_empty() {
         ShiftAssignment::delete_many()
             .filter(shift_assignment::Column::TenantId.eq(*tenant_id))

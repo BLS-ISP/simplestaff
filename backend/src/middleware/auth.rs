@@ -1,10 +1,13 @@
 use axum::extract::{FromRef, FromRequestParts};
 use axum::http::request::Parts;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::errors::AppError;
+use crate::middleware::tenant::execute_with_tenant;
+use crate::models::user;
 use crate::AppState;
 
 // ---------------------------------------------------------------------------
@@ -82,10 +85,40 @@ where
         let tenant_id = Uuid::parse_str(&claims.tenant_id)
             .map_err(|_| AppError::Unauthorized("Invalid tenant id in token".to_string()))?;
 
+        // Verify live user status and current role in the database so that
+        // deactivated/deleted accounts or role changes take effect immediately.
+        let live_user = execute_with_tenant(&app_state.db, &tenant_id, |txn| {
+            Box::pin(async move {
+                user::Entity::find()
+                    .filter(user::Column::Id.eq(user_id))
+                    .filter(user::Column::TenantId.eq(tenant_id))
+                    .one(txn)
+                    .await
+                    .map_err(AppError::from)
+            })
+        })
+        .await?
+        .ok_or_else(|| AppError::Unauthorized("Benutzerkonto existiert nicht mehr".to_string()))?;
+
+        if !live_user.is_active {
+            return Err(AppError::Unauthorized(
+                "Benutzerkonto ist deaktiviert".to_string(),
+            ));
+        }
+
+        if !matches!(
+            live_user.role.as_str(),
+            "super_admin" | "admin" | "planner" | "viewer"
+        ) {
+            return Err(AppError::Unauthorized(
+                "Invalid role in user account".to_string(),
+            ));
+        }
+
         Ok(AuthUser {
             user_id,
             tenant_id,
-            role: claims.role,
+            role: live_user.role,
         })
     }
 }

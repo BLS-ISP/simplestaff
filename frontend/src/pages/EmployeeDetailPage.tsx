@@ -87,6 +87,7 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
     phone: employee.phone ?? '',
     weekly_hours: employee.weekly_hours,
     vacation_days_per_year: employee.vacation_days_per_year,
+    vacation_days_remaining: employee.vacation_days_remaining,
     is_active: employee.is_active,
   });
 
@@ -176,6 +177,7 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
       phone: employee.phone ?? '',
       weekly_hours: employee.weekly_hours,
       vacation_days_per_year: employee.vacation_days_per_year,
+      vacation_days_remaining: employee.vacation_days_remaining,
       is_active: employee.is_active,
     });
   }, [employee]);
@@ -242,7 +244,7 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
             <div className="form-group">
               <label style={labelStyle}>Wochenstunden</label>
               <input
@@ -263,7 +265,29 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
                 min="0"
                 max="60"
                 value={form.vacation_days_per_year}
-                onChange={(e) => setForm((f) => ({ ...f, vacation_days_per_year: parseInt(e.target.value) || 0 }))}
+                onChange={(e) => {
+                  const newPerYear = parseInt(e.target.value) || 0;
+                  setForm((f) => {
+                    const delta = newPerYear - f.vacation_days_per_year;
+                    return {
+                      ...f,
+                      vacation_days_per_year: newPerYear,
+                      vacation_days_remaining: Math.max(0, f.vacation_days_remaining + delta),
+                    };
+                  });
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label style={labelStyle}>Resturlaub (Tage)</label>
+              <input
+                className="input"
+                type="number"
+                min="0"
+                max="120"
+                step="0.5"
+                value={form.vacation_days_remaining}
+                onChange={(e) => setForm((f) => ({ ...f, vacation_days_remaining: Math.max(0, parseFloat(e.target.value) || 0) }))}
               />
             </div>
           </div>

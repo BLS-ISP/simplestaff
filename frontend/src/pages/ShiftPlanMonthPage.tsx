@@ -1119,7 +1119,9 @@ export default function ShiftPlanMonthPage() {
             Schicht-Legende:
           </h4>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 24px' }}>
-            {shiftTypes.map((st) => (
+            {shiftTypes
+              .filter((st) => st.is_active || assignments.some((a) => a.shift_type_id === st.id))
+              .map((st) => (
               <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.7rem', color: '#000' }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: st.color, display: 'inline-block' }} />
                 <strong>{st.name}</strong> ({st.start_time.substring(0, 5)} - {st.end_time.substring(0, 5)})
@@ -1184,7 +1186,9 @@ export default function ShiftPlanMonthPage() {
           <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 600 }}>
             {t('monthView.legend', 'Legende')}:
           </span>
-          {shiftTypes.map((st) => (
+          {shiftTypes
+            .filter((st) => st.is_active || assignments.some((a) => a.shift_type_id === st.id))
+            .map((st) => (
             <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span
                 style={{

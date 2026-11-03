@@ -69,7 +69,7 @@ export default function ShiftTypesPage() {
     setError(null);
     try {
       const data = await api.shiftTypes.list();
-      setShiftTypes(data);
+      setShiftTypes(data.filter((st) => st.is_active));
     } catch {
       setError(t('shiftTypes.loadError', 'Schichttypen konnten nicht geladen werden.'));
     } finally {

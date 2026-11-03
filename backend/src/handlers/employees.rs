@@ -158,20 +158,47 @@ async fn list_employees(
 }
 
 /// GET /:id – get a single employee by ID.
+/// Managers can view any employee in their tenant; viewers can only view their own profile.
 async fn get_employee(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let tenant_id = auth.tenant_id;
+    let user_id = auth.user_id;
+    let role = auth.role.clone();
+
     let model = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
-            Employee::find()
+            let emp = Employee::find()
                 .filter(Column::Id.eq(id))
                 .filter(Column::TenantId.eq(tenant_id))
                 .one(txn)
                 .await?
-                .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))
+                .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))?;
+
+            if !matches!(role.as_str(), "super_admin" | "admin" | "planner") {
+                let current_user = user::Entity::find()
+                    .filter(user::Column::Id.eq(user_id))
+                    .filter(user::Column::TenantId.eq(tenant_id))
+                    .one(txn)
+                    .await?
+                    .ok_or_else(|| AppError::Forbidden("Kein Zugriff.".to_string()))?;
+
+                let is_own_profile = emp
+                    .email
+                    .as_deref()
+                    .map(|em| !em.trim().is_empty() && em.trim().eq_ignore_ascii_case(current_user.email.trim()))
+                    .unwrap_or(false);
+
+                if !is_own_profile {
+                    return Err(AppError::Forbidden(
+                        "Sie haben nur Zugriff auf Ihr eigenes Mitarbeiterprofil.".to_string(),
+                    ));
+                }
+            }
+
+            Ok(emp)
         })
     })
     .await?;
@@ -226,6 +253,8 @@ async fn create_employee(
 
     let model = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
+            let vac_per_year = body.vacation_days_per_year.unwrap_or(30);
+            let vac_remaining = body.vacation_days_remaining.unwrap_or(vac_per_year as f32);
             let active_model = ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tenant_id: Set(tenant_id),
@@ -236,8 +265,8 @@ async fn create_employee(
                 weekly_hours: Set(body.weekly_hours.unwrap_or(40.0)),
                 monthly_hours: Set(body.monthly_hours),
                 yearly_hours: Set(body.yearly_hours),
-                vacation_days_per_year: Set(body.vacation_days_per_year.unwrap_or(30)),
-                vacation_days_remaining: Set(body.vacation_days_remaining.unwrap_or(30.0)),
+                vacation_days_per_year: Set(vac_per_year),
+                vacation_days_remaining: Set(vac_remaining),
                 shift_preferences: Set(body.shift_preferences.unwrap_or_else(|| serde_json::json!({}))),
                 is_active: Set(true),
                 created_at: Set(now),
@@ -324,6 +353,8 @@ async fn update_employee(
                 .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))?;
 
             let old_email = existing.email.clone();
+            let old_vac_per_year = existing.vacation_days_per_year;
+            let old_vac_remaining = existing.vacation_days_remaining;
             let mut active_model: ActiveModel = existing.into();
 
             if let Some(ref v) = body.first_name {
@@ -349,9 +380,13 @@ async fn update_employee(
             }
             if let Some(v) = body.vacation_days_per_year {
                 active_model.vacation_days_per_year = Set(v);
+                if body.vacation_days_remaining.is_none() {
+                    let delta = (v - old_vac_per_year) as f32;
+                    active_model.vacation_days_remaining = Set((old_vac_remaining + delta).max(0.0));
+                }
             }
             if let Some(v) = body.vacation_days_remaining {
-                active_model.vacation_days_remaining = Set(v);
+                active_model.vacation_days_remaining = Set(v.max(0.0));
             }
             if let Some(v) = body.shift_preferences {
                 active_model.shift_preferences = Set(v);

@@ -235,6 +235,12 @@ pub async fn delete_tenant(
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_super_admin(&auth)?;
 
+    if id == auth.tenant_id {
+        return Err(AppError::BadRequest(
+            "Der eigene System-Mandant des Super-Admins kann nicht gelöscht werden.".to_string(),
+        ));
+    }
+
     // Cascade delete is handled at the database layer (FOREIGN KEY ... ON DELETE CASCADE).
     // So deleting from tenants automatically cleans up everything.
     let result = tenant::Entity::delete_by_id(id)

@@ -108,7 +108,8 @@ pub fn router() -> Router<AppState> {
 // Handlers
 // ---------------------------------------------------------------------------
 
-/// GET / - List active shift types for the current tenant.
+/// GET / - List all shift types for the current tenant (including soft-deleted ones
+/// so that historical shift assignments and hour calculations remain intact).
 pub async fn list_shift_types(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -119,7 +120,6 @@ pub async fn list_shift_types(
         Box::pin(async move {
             ShiftType::find()
                 .filter(Column::TenantId.eq(tenant_id))
-                .filter(Column::IsActive.eq(true))
                 .all(txn)
                 .await
                 .map_err(AppError::from)
