@@ -147,6 +147,7 @@ pub async fn update_tenant_settings(
                 .ok_or_else(|| AppError::NotFound("Tenant not found".to_string()))?;
 
             let existing_max_employees = existing.settings.get("max_employees").cloned();
+            let existing_week_templates = existing.settings.get("week_templates").cloned();
 
             let mut new_settings = payload.settings;
             if let Some(obj) = new_settings.as_object_mut() {
@@ -154,6 +155,11 @@ pub async fn update_tenant_settings(
                     obj.insert("max_employees".to_string(), max_emp);
                 } else {
                     obj.remove("max_employees");
+                }
+                if !obj.contains_key("week_templates") {
+                    if let Some(tpls) = existing_week_templates {
+                        obj.insert("week_templates".to_string(), tpls);
+                    }
                 }
             }
 

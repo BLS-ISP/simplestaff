@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { ValidationWarning } from '../api/client';
-import type { Employee, ShiftType, ShiftAssignment, Vacation, BlockedDay } from '../types';
+import type { Employee, ShiftType, ShiftAssignment, Vacation, BlockedDay, WeekTemplate } from '../types';
 import { useAuth } from '../hooks/useAuth';
 
 // ── Helper Functions ──────────────────────────────────────────
@@ -117,6 +117,114 @@ export default function ShiftPlanPage() {
   const [autoScheduling, setAutoScheduling] = useState(false);
   const [autoScheduleError, setAutoScheduleError] = useState<string | null>(null);
 
+  // Week templates state (Feature 5)
+  const [showTemplatesModal, setShowTemplatesModal] = useState(false);
+  const [templates, setTemplates] = useState<WeekTemplate[]>([]);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [applyingTemplateId, setApplyingTemplateId] = useState<string | null>(null);
+
+  // Multi-day sick leave state (Feature 2)
+  const [showSickRangeModal, setShowSickRangeModal] = useState(false);
+  const [sickRangeEmpId, setSickRangeEmpId] = useState('');
+  const [sickRangeStart, setSickRangeStart] = useState('');
+  const [sickRangeEnd, setSickRangeEnd] = useState('');
+  const [sickRangeNotes, setSickRangeNotes] = useState('');
+  const [submittingSickRange, setSubmittingSickRange] = useState(false);
+
+  const openTemplatesModal = async () => {
+    setShowTemplatesModal(true);
+    try {
+      const list = await api.assignments.listTemplates();
+      setTemplates(list);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Vorlagen konnten nicht geladen werden.');
+    }
+  };
+
+  const handleSaveWeekTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTemplateName.trim()) return;
+    try {
+      setSavingTemplate(true);
+      setError(null);
+      const created = await api.assignments.createTemplate({
+        name: newTemplateName.trim(),
+        source_monday: toISODateString(currentMonday),
+      });
+      setTemplates((prev) => [...prev, created]);
+      setNewTemplateName('');
+      setInfoMessage(`Wochen-Vorlage "${created.name}" (${created.entries.length} Schichten) gespeichert.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Vorlage konnte nicht gespeichert werden.');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleApplyWeekTemplate = async (tpl: WeekTemplate) => {
+    if (!window.confirm(`Vorlage "${tpl.name}" auf die aktuelle Woche (KW ${weekNumber}) anwenden?`)) return;
+    try {
+      setApplyingTemplateId(tpl.id);
+      setError(null);
+      const res = await api.assignments.applyTemplate(tpl.id, toISODateString(currentMonday));
+      setShowTemplatesModal(false);
+      setInfoMessage(`Vorlage "${tpl.name}" angewendet: ${res.applied_count} Schicht(en) eingetragen (${res.skipped_count} übersprungen).`);
+      await fetchData(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Vorlage konnte nicht angewendet werden.');
+    } finally {
+      setApplyingTemplateId(null);
+    }
+  };
+
+  const handleDeleteWeekTemplate = async (id: string) => {
+    if (!window.confirm('Diese Wochen-Vorlage wirklich löschen?')) return;
+    try {
+      await api.assignments.deleteTemplate(id);
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen.');
+    }
+  };
+
+  const openSickRangeModal = () => {
+    setSickRangeStart(toISODateString(currentMonday));
+    const sun = new Date(currentMonday);
+    sun.setDate(sun.getDate() + 6);
+    setSickRangeEnd(toISODateString(sun));
+    setSickRangeNotes('');
+    setShowSickRangeModal(true);
+  };
+
+  const handleSickRangeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sickRangeStart || !sickRangeEnd) return;
+    if (!isViewer && !sickRangeEmpId) {
+      setError('Bitte wählen Sie einen Mitarbeiter aus.');
+      return;
+    }
+    try {
+      setSubmittingSickRange(true);
+      setError(null);
+      const res = await api.assignments.markSickRange({
+        employee_id: isViewer ? undefined : sickRangeEmpId,
+        start_date: sickRangeStart,
+        end_date: sickRangeEnd,
+        notes: sickRangeNotes.trim() || undefined,
+      });
+      setShowSickRangeModal(false);
+      setInfoMessage(
+        `Krankmeldung gespeichert: ${res.marked_sick_count} Schicht(en) als krank markiert (${res.swap_requests_created} Vertretungsgesuch(e) geöffnet).`
+      );
+      await fetchData(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Krankmeldung fehlgeschlagen.');
+    } finally {
+      setSubmittingSickRange(false);
+    }
+  };
+
   const openAutoModal = () => {
     setAutoStartDate(toISODateString(currentMonday));
     const sun = new Date(currentMonday);
@@ -167,11 +275,15 @@ export default function ShiftPlanPage() {
     return map;
   }, [shiftTypes]);
 
-  // Build assignment lookup: `empId|date` → ShiftAssignment
+  // Build assignment lookup: `empId|date` → ShiftAssignment (prioritizing active non-sick shifts)
   const assignmentLookup = useMemo(() => {
     const map: Record<string, ShiftAssignment> = {};
     for (const a of assignments) {
-      map[`${a.employee_id}|${a.assignment_date}`] = a;
+      const key = `${a.employee_id}|${a.assignment_date}`;
+      const existing = map[key];
+      if (!existing || existing.status === 'sick' || a.status !== 'sick') {
+        map[key] = a;
+      }
     }
     return map;
   }, [assignments]);
@@ -578,8 +690,24 @@ export default function ShiftPlanPage() {
               >
                 📋 {copyingWeek ? 'Kopiere…' : 'Vorwoche kopieren'}
               </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={openTemplatesModal}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                title="Wochen-Vorlagen speichern oder auf diese Woche anwenden"
+              >
+                🗂️ Vorlagen
+              </button>
             </>
           )}
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={openSickRangeModal}
+            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+            title="Mehrtagige Krankmeldung (Zeitraum von–bis) eintragen"
+          >
+            🤒 Krankmeldung
+          </button>
           <button
             className="btn btn-secondary btn-sm"
             onClick={handleExportCSV}
@@ -1448,6 +1576,147 @@ export default function ShiftPlanPage() {
                 })()}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Week Templates Modal (Feature 5) ── */}
+      {showTemplatesModal && !isViewer && (
+        <div className="modal-backdrop" onClick={() => setShowTemplatesModal(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
+            <h3 style={{ margin: '0 0 var(--space-xs) 0', fontSize: '1.15rem', fontWeight: 700 }}>
+              🗂️ Wochen-Vorlagen verwalten
+            </h3>
+            <p style={{ margin: '0 0 var(--space-md) 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              Speichere die aktuell angezeigte Woche (KW {weekNumber}) als wiederverwendbare Musterwoche oder wende eine gespeicherte Vorlage auf KW {weekNumber} an.
+            </p>
+
+            <form onSubmit={handleSaveWeekTemplate} style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>
+              <input
+                type="text"
+                className="input"
+                required
+                placeholder="Name der Vorlage (z. B. Regelbetrieb, Ferienwoche)..."
+                value={newTemplateName}
+                onChange={(e) => setNewTemplateName(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button type="submit" className="btn btn-primary btn-sm" disabled={savingTemplate}>
+                {savingTemplate ? 'Speichert…' : '+ Aktuelle Woche speichern'}
+              </button>
+            </form>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', maxHeight: 280, overflowY: 'auto' }}>
+              {templates.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 'var(--space-lg)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  Noch keine Wochen-Vorlagen gespeichert.
+                </div>
+              ) : (
+                templates.map((tpl) => (
+                  <div
+                    key={tpl.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: 'var(--space-sm)',
+                      padding: 'var(--space-sm) var(--space-md)',
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-primary)',
+                      borderRadius: 'var(--radius-sm)',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.92rem' }}>{tpl.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {tpl.entries.length} Schichtzuweisungen gespeichert
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={applyingTemplateId === tpl.id}
+                        onClick={() => handleApplyWeekTemplate(tpl)}
+                      >
+                        {applyingTemplateId === tpl.id ? 'Wende an…' : 'Auf KW ' + weekNumber + ' anwenden'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleDeleteWeekTemplate(tpl.id)}
+                        title="Vorlage löschen"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-md)' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowTemplatesModal(false)}>
+                Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Multi-Day Sick Leave Modal (Feature 2) ── */}
+      {showSickRangeModal && (
+        <div className="modal-backdrop" onClick={() => setShowSickRangeModal(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <h3 style={{ margin: '0 0 var(--space-xs) 0', fontSize: '1.15rem', fontWeight: 700 }}>
+              🤒 Krankmeldung für Zeitraum eintragen
+            </h3>
+            <p style={{ margin: '0 0 var(--space-md) 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              Alle geplanten Schichten im gewählten Zeitraum werden automatisch als krank markiert und als Vertretungsgesuch in die Tauschbörse gestellt.
+            </p>
+            <form onSubmit={handleSickRangeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+              {!isViewer && (
+                <div>
+                  <label className="label">Mitarbeiter</label>
+                  <select className="input" required value={sickRangeEmpId} onChange={(e) => setSickRangeEmpId(e.target.value)}>
+                    <option value="">-- Mitarbeiter wählen --</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {getEmployeeName(emp)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-sm)' }}>
+                <div>
+                  <label className="label">Krank von</label>
+                  <input type="date" className="input" required value={sickRangeStart} onChange={(e) => setSickRangeStart(e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Bis (inkl.)</label>
+                  <input type="date" className="input" required value={sickRangeEnd} onChange={(e) => setSickRangeEnd(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="label">Notiz / Hinweis (optional)</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="z. B. AU liegt vor"
+                  value={sickRangeNotes}
+                  onChange={(e) => setSickRangeNotes(e.target.value)}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-sm)' }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowSickRangeModal(false)}>
+                  Abbrechen
+                </button>
+                <button type="submit" className="btn btn-danger btn-sm" disabled={submittingSickRange}>
+                  {submittingSickRange ? 'Speichere…' : '🤒 Krankmeldung speichern'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

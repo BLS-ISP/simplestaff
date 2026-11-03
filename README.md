@@ -13,12 +13,12 @@
 ### Kernfunktionen
 
 - **Wochen- & Monats-Dienstplanung**
-  - Übersichtliche Wochen- und Monatsansichten mit Klick-Zuweisung, **1-Klick-Vorwochenkopie** (`Vorwoche kopieren`), Live-Stundenauswertung und Druck-/PDF-Ansicht.
-  - **Ist-Arbeitszeiterfassung & Lohnbuchhaltungs-CSV:** Erfassung tatsächlicher Start-/Endzeiten, Pausen und Schichtstatus sowie detaillierter Monats-Export für die Lohnabrechnung (Soll-/Geplante/Ist-Stunden, Nacht-, Sonntags- und Feiertagsstunden, Krankheitstage, Urlaubstage).
-  - **Lese-Ansicht für Mitarbeiter (`viewer`):** Mitarbeiter können den gesamten Team-Dienstplan einsehen oder per Schnellfilter auf ihre eigenen Schichten umschalten.
+  - Übersichtliche Wochen- und Monatsansichten mit Klick-Zuweisung, **1-Klick-Vorwochenkopie** (`Vorwoche kopieren`), speicherbaren **Wochen-Vorlagen** (`🗂️ Vorlagen`), Live-Stundenauswertung und Druck-/PDF-Ansicht.
+  - **Ist-Arbeitszeiterfassung, Lohnbuchhaltungs-CSV & Einzel-Stundenzettel:** Erfassung tatsächlicher Start-/Endzeiten, Pausen und Schichtstatus, detaillierter Monats-Export für die Lohnabrechnung sowie druckfertiger **Monats-Stundenzettel pro Mitarbeiter** (`📄 Stundenzettel (PDF)` gem. § 16 Abs. 2 ArbZG / § 17 MiLoG inkl. Unterschriftsfeldern).
+  - **Lese-Ansicht für Mitarbeiter (`viewer`):** Mitarbeiter können den gesamten Team-Dienstplan einsehen, per Schnellfilter auf ihre eigenen Schichten umschalten und ihren eigenen Monats-Stundenzettel abrufen.
   - Automatische Kennzeichnung von genehmigten Urlauben, individuellen Sperrtagen, Betriebsferien und gesetzlichen Feiertagen.
-- **Krankmeldung & Automatische Vertretungssuche**
-  - 1-Klick-Krankmeldung direkt im Dienstplan (`🤒 Krankmelden & Vertretung suchen`): markiert den Ausfall im Plan, nimmt die Schicht aus der aktiven Besetzungszählung heraus und erstellt automatisch ein offenes Vertretungsgesuch in der Schichttauschbörse.
+- **Krankmeldung (Einzelschicht & Zeitraum) & Automatische Vertretungssuche**
+  - 1-Klick-Krankmeldung direkt im Dienstplan oder als **mehrtägige Krankmeldung (`von – bis`)**: markiert alle betroffenen Schichten im Plan als `🤒 Krank`, nimmt sie aus der aktiven Besetzungszählung und dem Smartphone-Kalender heraus und erstellt automatisch offene Vertretungsgesuche in der Schichttauschbörse.
 - **Automatischer Feiertags-Generator (alle 16 Bundesländer)**
   - In den Betriebseinstellungen können alle bundesweiten und landesspezifischen gesetzlichen Feiertage (`BW` bis `TH`, inkl. beweglicher Oster-/Pfingstfeiertage und Buß- und Bettag) für jedes beliebige Jahr per Klick importiert werden.
 - **Integrierte ArbZG- & Regelprüfung**
@@ -29,9 +29,10 @@
     - Prüfung auf genehmigten Urlaub, Sperrtage, Wochentags-Sperrzeiten, Feiertags-Modi und Mindest-/Maximalbesetzung pro Schichttyp.
 - **Automatische Dienstplanbesetzung (Auto-Scheduler)**
   - Regelbasierter Greedy-Solver zur automatischen Besetzung offener Schichten (inkl. Nachbesetzung bei Krankmeldungen) für frei wählbare Zukunftszeiträume unter Einhaltung aller ArbZG-Vorgaben, Mitarbeiterpräferenzen und gleichmäßiger Stundenauslastung.
-- **Schichttauschbörse & Urlaubsworkflow**
-  - Mitarbeiter können eigene Schichten zum Tausch freigeben (offen oder direkt an Kollegen adressiert) und Schichten übernehmen; Freigabe erfolgt durch Schichtleiter/Administratoren inkl. ArbZG-Prüfung.
-  - Digitaler Urlaubsantrag mit **feiertagsbereinigter** Werktagsberechnung (Mo–Fr abzüglich gesetzlicher Feiertage/Betriebsschließungen), Resturlaubskonto und E-Mail-Benachrichtigung bei Antragstellung, Genehmigung oder Ablehnung.
+- **Schichttauschbörse, Urlaubsworkflow & Mitarbeiter-Self-Service**
+  - Mitarbeiter können eigene Schichten zum Tausch freigeben (offen oder direkt an Kollegen adressiert) und Schichten übernehmen; Schichtleiter können sowohl Vorschläge freigeben als auch offene Vertretungsgesuche **direkt einem Ersatz-Mitarbeiter zuweisen** (inkl. ArbZG-Prüfung und automatischer Rücksetzung des Krank-Status).
+  - Digitaler Urlaubsantrag mit Überlappungsschutz, Eigen-Storno für offene Anträge, **feiertagsbereinigter** Werktagsberechnung (Mo–Fr abzüglich gesetzlicher Feiertage/Betriebsschließungen), Resturlaubskonto und E-Mail-Benachrichtigung.
+  - Vollständiger **Mitarbeiter-Self-Service** für Wunschfrei/Sperrtage (`📅 Wunschfrei / Sperrtage`), Wochentags-Schichtpräferenzen (`🌟 Schicht-Präferenzen`) und Krankmeldungen (`🤒 Krankmeldung (AU)`).
 - **Kalender-Abonnement (iCal / WebCal)**
   - Persönlicher ICS-Download sowie kryptografisch signierte Langzeit-Abo-Links (`webcal://` / `https://`) für die Live-Synchronisation in Apple Kalender, Google Calendar, Outlook und Smartphones.
 - **Mandantenfähigkeit (Multi-Tenancy), Sicherheit & Rollenmodell**

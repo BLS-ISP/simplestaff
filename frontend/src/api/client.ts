@@ -29,6 +29,7 @@ import type {
   CreateClosedDayRequest,
   ShiftSwap,
   CreateShiftSwapRequest,
+  WeekTemplate,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
@@ -198,6 +199,12 @@ const employees = {
   getMe: () =>
     request<Employee>('/employees/me'),
 
+  updateMyPreferences: (shift_preferences: Record<string, number>) =>
+    request<Employee>('/employees/me/preferences', {
+      method: 'PUT',
+      body: JSON.stringify({ shift_preferences }),
+    }),
+
   create: (data: CreateEmployeeRequest) =>
     request<Employee>('/employees', {
       method: 'POST',
@@ -281,6 +288,11 @@ const vacations = {
     request<Vacation>(`/employees/${employeeId}/vacations/${vacationId}/reject`, {
       method: 'PUT',
     }),
+
+  delete: (employeeId: string, vacationId: string) =>
+    request<{ deleted: boolean; id: string }>(`/employees/${employeeId}/vacations/${vacationId}`, {
+      method: 'DELETE',
+    }),
 };
 
 // ---------------------------------------------------------------------------
@@ -357,6 +369,32 @@ const assignments = {
   markSick: (id: string) =>
     request<ShiftAssignment>(`/assignments/${id}/mark-sick`, {
       method: 'POST',
+    }),
+
+  markSickRange: (data: { employee_id?: string; start_date: string; end_date: string; notes?: string }) =>
+    request<{ success: boolean; marked_sick_count: number; swap_requests_created: number }>('/assignments/mark-sick-range', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  listTemplates: () =>
+    request<WeekTemplate[]>('/assignments/templates'),
+
+  createTemplate: (data: { name: string; source_monday: string }) =>
+    request<WeekTemplate>('/assignments/templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  applyTemplate: (id: string, target_monday: string) =>
+    request<{ success: boolean; applied_count: number; skipped_count: number }>(`/assignments/templates/${id}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ target_monday }),
+    }),
+
+  deleteTemplate: (id: string) =>
+    request<{ deleted: boolean; id: string }>(`/assignments/templates/${id}`, {
+      method: 'DELETE',
     }),
 };
 
@@ -466,9 +504,10 @@ const shiftSwaps = {
       method: 'PUT',
     }),
 
-  approve: (id: string) =>
+  approve: (id: string, backupEmployeeId?: string) =>
     request<any>(`/shift-swaps/${id}/approve`, {
       method: 'PUT',
+      ...(backupEmployeeId ? { body: JSON.stringify({ backup_employee_id: backupEmployeeId }) } : {}),
     }),
 
   reject: (id: string) =>

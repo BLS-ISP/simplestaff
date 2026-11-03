@@ -92,6 +92,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_employees).post(create_employee))
         .route("/me", get(get_current_employee))
+        .route("/me/preferences", put(update_my_preferences))
         .route("/{id}", get(get_employee).put(update_employee).delete(delete_employee))
         .route("/{id}/create-user", post(create_employee_user))
         .route("/{id}/user-account", get(get_employee_user_account).put(update_employee_user_account))
@@ -102,6 +103,7 @@ pub fn router() -> Router<AppState> {
         
         .route("/{employee_id}/vacations", get(vacations::list_vacations).post(vacations::create_vacation))
         .route("/{employee_id}/vacations/", get(vacations::list_vacations).post(vacations::create_vacation))
+        .route("/{employee_id}/vacations/{id}", delete(vacations::delete_vacation))
         .route("/{employee_id}/vacations/{id}/approve", put(vacations::approve_vacation))
         .route("/{employee_id}/vacations/{id}/reject", put(vacations::reject_vacation))
 }
@@ -506,11 +508,18 @@ async fn get_current_employee(
                 .await?
                 .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-            let emp_model = Employee::find()
+            let all_emps = Employee::find()
                 .filter(Column::TenantId.eq(auth_user.tenant_id))
-                .filter(Column::Email.eq(user_model.email))
-                .one(txn)
-                .await?
+                .all(txn)
+                .await?;
+            let emp_model = all_emps
+                .into_iter()
+                .find(|e| {
+                    e.email
+                        .as_deref()
+                        .map(|em| !em.trim().is_empty() && em.trim().eq_ignore_ascii_case(user_model.email.trim()))
+                        .unwrap_or(false)
+                })
                 .ok_or_else(|| AppError::NotFound("Zu diesem Benutzer wurde kein Mitarbeiterprofil gefunden.".to_string()))?;
             Ok(emp_model)
         })
@@ -518,6 +527,56 @@ async fn get_current_employee(
     .await?;
 
     let value = serde_json::to_value(emp)
+        .map_err(|e| AppError::InternalError(format!("Serialization error: {e}")))?;
+
+    Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateMyPreferencesRequest {
+    pub shift_preferences: serde_json::Value,
+}
+
+/// PUT /me/preferences – update the logged-in employee's own shift preferences.
+async fn update_my_preferences(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Json(body): Json<UpdateMyPreferencesRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let now = chrono::Utc::now().fixed_offset();
+    let updated = execute_with_tenant(&state.db, &auth_user.tenant_id, |txn| {
+        Box::pin(async move {
+            let user_model = user::Entity::find()
+                .filter(user::Column::Id.eq(auth_user.user_id))
+                .filter(user::Column::TenantId.eq(auth_user.tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+            let all_emps = Employee::find()
+                .filter(Column::TenantId.eq(auth_user.tenant_id))
+                .all(txn)
+                .await?;
+            let emp_model = all_emps
+                .into_iter()
+                .find(|e| {
+                    e.email
+                        .as_deref()
+                        .map(|em| !em.trim().is_empty() && em.trim().eq_ignore_ascii_case(user_model.email.trim()))
+                        .unwrap_or(false)
+                })
+                .ok_or_else(|| AppError::NotFound("Zu diesem Benutzer wurde kein Mitarbeiterprofil gefunden.".to_string()))?;
+
+            let mut active: ActiveModel = emp_model.into();
+            active.shift_preferences = Set(body.shift_preferences);
+            active.updated_at = Set(now);
+            let res = active.update(txn).await?;
+            Ok(res)
+        })
+    })
+    .await?;
+
+    let value = serde_json::to_value(updated)
         .map_err(|e| AppError::InternalError(format!("Serialization error: {e}")))?;
 
     Ok(Json(value))

@@ -183,6 +183,21 @@ pub async fn create_vacation(
         Box::pin(async move {
             let emp = verify_employee_access(txn, &auth_clone, employee_id).await?;
 
+            // Prevent overlapping requested or approved vacations for the same employee
+            let overlapping = Vacation::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::EmployeeId.eq(employee_id))
+                .filter(Column::Status.is_in(["requested", "approved"]))
+                .filter(Column::StartDate.lte(body.end_date))
+                .filter(Column::EndDate.gte(body.start_date))
+                .one(txn)
+                .await?;
+            if overlapping.is_some() {
+                return Err(AppError::Conflict(
+                    "In diesem Zeitraum existiert bereits ein beantragter oder genehmigter Urlaub.".to_string(),
+                ));
+            }
+
             let first = emp.first_name.clone().unwrap_or_default();
             let last = emp.last_name.clone().unwrap_or_default();
             let full_name = format!("{} {}", first, last).trim().to_string();
@@ -396,6 +411,73 @@ pub async fn reject_vacation(
     }
 
     Ok(Json(VacationResponse::from(vacation)))
+}
+
+/// DELETE /employees/:employee_id/vacations/:id – cancel/delete a vacation request.
+/// Employees (`viewer`) may cancel their own `"requested"` vacations; managers may delete any vacation
+/// (refunding days if it was `"approved"`).
+pub async fn delete_vacation(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((employee_id, vacation_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let is_manager = matches!(auth.role.as_str(), "super_admin" | "admin" | "planner");
+    let tenant_id = auth.tenant_id;
+
+    execute_with_tenant(&state.db, &tenant_id, |txn| {
+        let auth_clone = auth.clone();
+        Box::pin(async move {
+            let emp = verify_employee_access(txn, &auth_clone, employee_id).await?;
+
+            let vacation = Vacation::find()
+                .filter(Column::Id.eq(vacation_id))
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::EmployeeId.eq(employee_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Urlaubsantrag nicht gefunden.".to_string()))?;
+
+            if !is_manager && vacation.status != "requested" {
+                return Err(AppError::BadRequest(
+                    "Bereits bearbeitete Urlaubsanträge können nur durch die Planungsleitung storniert werden.".to_string(),
+                ));
+            }
+
+            if vacation.status == "approved" {
+                let closed_list = closed_day::Entity::find()
+                    .filter(closed_day::Column::TenantId.eq(tenant_id))
+                    .filter(closed_day::Column::ClosedDate.gte(vacation.start_date))
+                    .filter(closed_day::Column::ClosedDate.lte(vacation.end_date))
+                    .all(txn)
+                    .await?;
+                let closed_dates: HashSet<NaiveDate> =
+                    closed_list.into_iter().map(|c| c.closed_date).collect();
+
+                let days = count_vacation_days(
+                    vacation.start_date,
+                    vacation.end_date,
+                    &closed_dates,
+                );
+                let mut active_emp: employee::ActiveModel = emp.into();
+                let new_remaining = active_emp.vacation_days_remaining.unwrap() + days;
+                active_emp.vacation_days_remaining = Set(new_remaining);
+                active_emp.updated_at = Set(chrono::Utc::now().into());
+                active_emp.update(txn).await?;
+            }
+
+            Vacation::delete_many()
+                .filter(Column::Id.eq(vacation_id))
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::EmployeeId.eq(employee_id))
+                .exec(txn)
+                .await?;
+
+            Ok(())
+        })
+    })
+    .await?;
+
+    Ok(Json(serde_json::json!({ "deleted": true, "id": vacation_id })))
 }
 
 #[derive(Debug, Serialize)]

@@ -132,6 +132,28 @@ pub struct CreateSwapRequest {
     pub notes: Option<String>,
 }
 
+#[derive(Deserialize, Default)]
+pub struct ApproveSwapRequest {
+    pub backup_employee_id: Option<Uuid>,
+}
+
+async fn find_employee_by_email(
+    txn: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    email: &str,
+) -> Result<Option<employee::Model>, AppError> {
+    let all_emps = employee::Entity::find()
+        .filter(employee::Column::TenantId.eq(tenant_id))
+        .all(txn)
+        .await?;
+    Ok(all_emps.into_iter().find(|e| {
+        e.email
+            .as_deref()
+            .map(|em| !em.trim().is_empty() && em.trim().eq_ignore_ascii_case(email.trim()))
+            .unwrap_or(false)
+    }))
+}
+
 /// POST /api/shift-swaps – release a shift for swap
 pub async fn create_shift_swap(
     State(state): State<AppState>,
@@ -152,11 +174,7 @@ pub async fn create_shift_swap(
                 .await?
                 .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-            let emp = employee::Entity::find()
-                .filter(employee::Column::TenantId.eq(tenant_id))
-                .filter(employee::Column::Email.eq(user_record.email))
-                .one(txn)
-                .await?;
+            let emp = find_employee_by_email(txn, tenant_id, &user_record.email).await?;
 
             let assignment = shift_assignment::Entity::find()
                 .filter(shift_assignment::Column::Id.eq(assignment_id))
@@ -248,10 +266,7 @@ pub async fn claim_shift_swap(
                 .await?
                 .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-            let emp = employee::Entity::find()
-                .filter(employee::Column::TenantId.eq(tenant_id))
-                .filter(employee::Column::Email.eq(user_record.email))
-                .one(txn)
+            let emp = find_employee_by_email(txn, tenant_id, &user_record.email)
                 .await?
                 .ok_or_else(|| AppError::Forbidden("Für Ihr Konto wurde kein Mitarbeiterprofil gefunden. Sie können keine Schichten übernehmen.".to_string()))?;
             Ok(emp.id)
@@ -357,11 +372,12 @@ pub async fn claim_shift_swap(
     Ok(Json(serde_json::to_value(updated).unwrap()))
 }
 
-/// PUT /api/shift-swaps/{id}/approve – planner approves the swap
+/// PUT /api/shift-swaps/{id}/approve – planner approves the swap (or directly assigns a replacement to an open swap)
 pub async fn approve_shift_swap(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(swap_id): Path<Uuid>,
+    body: Option<Json<ApproveSwapRequest>>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let tenant_id = auth.tenant_id;
 
@@ -369,6 +385,8 @@ pub async fn approve_shift_swap(
         "super_admin" | "admin" | "planner" => {}
         _ => return Err(AppError::Forbidden("Manager access required".to_string())),
     }
+
+    let override_backup_id = body.and_then(|Json(b)| b.backup_employee_id);
 
     let (updated_assignment, recipient_emails, shift_date, shift_name) = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
@@ -379,12 +397,21 @@ pub async fn approve_shift_swap(
                 .await?
                 .ok_or_else(|| AppError::NotFound("Tauschantrag nicht gefunden".to_string()))?;
 
-            if swap.status != "proposed" {
-                return Err(AppError::BadRequest("Der Tauschantrag befindet sich nicht im Status 'proposed'.".to_string()));
+            if swap.status != "proposed" && !(swap.status == "open" && override_backup_id.is_some()) {
+                return Err(AppError::BadRequest(
+                    "Der Tauschantrag befindet sich nicht im Status 'proposed' (oder wählen Sie direkt einen Ersatz-Mitarbeiter aus).".to_string(),
+                ));
             }
 
-            let backup_employee_id = swap.backup_employee_id
+            let backup_employee_id = override_backup_id
+                .or(swap.backup_employee_id)
                 .ok_or_else(|| AppError::BadRequest("Kein Übernahme-Kandidat vorhanden.".to_string()))?;
+
+            if backup_employee_id == swap.requesting_employee_id {
+                return Err(AppError::BadRequest(
+                    "Der abgebende Mitarbeiter kann nicht als eigene Vertretung zugewiesen werden.".to_string(),
+                ));
+            }
 
             let assignment = shift_assignment::Entity::find()
                 .filter(shift_assignment::Column::Id.eq(swap.assignment_id))
@@ -393,18 +420,18 @@ pub async fn approve_shift_swap(
                 .await?
                 .ok_or_else(|| AppError::NotFound("Zugehörige Schichtzuweisung nicht gefunden.".to_string()))?;
 
-            // Check if backup_employee_id is already assigned to the same shift type on the same date
+            // Check if backup_employee_id is already assigned to any non-sick shift on the same date
             let duplicate = shift_assignment::Entity::find()
                 .filter(shift_assignment::Column::TenantId.eq(tenant_id))
                 .filter(shift_assignment::Column::EmployeeId.eq(backup_employee_id))
-                .filter(shift_assignment::Column::ShiftTypeId.eq(assignment.shift_type_id))
                 .filter(shift_assignment::Column::AssignmentDate.eq(assignment.assignment_date))
+                .filter(shift_assignment::Column::Status.ne("sick"))
                 .filter(shift_assignment::Column::Id.ne(assignment.id))
                 .one(txn)
                 .await?;
             if duplicate.is_some() {
                 return Err(AppError::BadRequest(
-                    "Der übernehmende Mitarbeiter ist in dieser Schicht bereits eingeteilt.".to_string(),
+                    "Der übernehmende Mitarbeiter ist an diesem Tag bereits für eine Schicht eingeteilt.".to_string(),
                 ));
             }
 
@@ -439,10 +466,15 @@ pub async fn approve_shift_swap(
 
             let mut active_assign: shift_assignment::ActiveModel = assignment.clone().into();
             active_assign.employee_id = Set(backup_employee_id);
+            if assignment.status == "sick" {
+                active_assign.status = Set("planned".to_string());
+                active_assign.notes = Set(Some("Vertretung übernommen".to_string()));
+            }
             active_assign.updated_at = Set(chrono::Utc::now().into());
             let updated_assign = active_assign.update(txn).await?;
 
             let mut active_swap: shift_swap::ActiveModel = swap.clone().into();
+            active_swap.backup_employee_id = Set(Some(backup_employee_id));
             active_swap.status = Set("approved".to_string());
             active_swap.updated_at = Set(chrono::Utc::now().into());
             active_swap.update(txn).await?;
@@ -623,10 +655,7 @@ pub async fn delete_shift_swap(
                     .await?
                     .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
 
-                let emp = employee::Entity::find()
-                    .filter(employee::Column::TenantId.eq(tenant_id))
-                    .filter(employee::Column::Email.eq(user_record.email))
-                    .one(txn)
+                let emp = find_employee_by_email(txn, tenant_id, &user_record.email)
                     .await?
                     .ok_or_else(|| AppError::Forbidden("Mitarbeiterprofil nicht gefunden".to_string()))?;
 

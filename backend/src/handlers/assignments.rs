@@ -108,6 +108,10 @@ pub fn router() -> Router<AppState> {
         .route("/month/{date}", get(get_month))
         .route("/auto-schedule", axum::routing::post(auto_schedule))
         .route("/copy-week", axum::routing::post(copy_week))
+        .route("/mark-sick-range", axum::routing::post(mark_sick_range))
+        .route("/templates", get(list_templates).post(create_template))
+        .route("/templates/{id}/apply", axum::routing::post(apply_template))
+        .route("/templates/{id}", axum::routing::delete(delete_template))
         .route("/{id}/mark-sick", axum::routing::post(mark_sick))
         .route("/{id}", put(update_assignment).delete(delete_assignment))
 }
@@ -188,6 +192,39 @@ pub async fn create_assignment(
                 .is_some();
             if !st_exists {
                 return Err(AppError::NotFound("Shift type not found in tenant".to_string()));
+            }
+
+            // Prevent duplicate assignments for the same employee on the same date
+            let existing_same_day = ShiftAssignment::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::EmployeeId.eq(body.employee_id))
+                .filter(Column::AssignmentDate.eq(body.assignment_date))
+                .one(txn)
+                .await?;
+            if let Some(existing) = existing_same_day {
+                if existing.status != "sick" {
+                    return Err(AppError::Conflict(
+                        "Dieser Mitarbeiter ist an diesem Tag bereits für eine Schicht eingeteilt.".to_string(),
+                    ));
+                }
+                // Re-activate sick assignment on the same day if reassigned
+                let existing_id = existing.id;
+                let mut active_existing: ActiveModel = existing.into();
+                active_existing.shift_type_id = Set(body.shift_type_id);
+                active_existing.status = Set("planned".to_string());
+                active_existing.notes = Set(body.notes);
+                active_existing.updated_at = Set(now);
+                let updated = active_existing.update(txn).await?;
+
+                // Cancel any open swap request for this assignment
+                crate::models::shift_swap::Entity::delete_many()
+                    .filter(crate::models::shift_swap::Column::TenantId.eq(tenant_id))
+                    .filter(crate::models::shift_swap::Column::AssignmentId.eq(existing_id))
+                    .filter(crate::models::shift_swap::Column::Status.is_in(["open", "proposed"]))
+                    .exec(txn)
+                    .await?;
+
+                return Ok(updated);
             }
 
             let active = ActiveModel {
@@ -511,14 +548,15 @@ pub async fn copy_week(
 }
 
 /// POST /:id/mark-sick — marks an assignment as `sick` and creates an open shift swap request.
+/// Allowed for managers or the assigned employee themselves.
 pub async fn mark_sick(
     State(state): State<AppState>,
     auth_user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> Result<Json<shift_assignment::Model>, AppError> {
-    require_manager(&auth_user)?;
-
+    let is_manager = matches!(auth_user.role.as_str(), "super_admin" | "admin" | "planner");
     let tenant_id = auth_user.tenant_id;
+    let user_id = auth_user.user_id;
     let now = chrono::Utc::now().into();
 
     let updated = execute_with_tenant(&state.db, &tenant_id, |txn| {
@@ -529,6 +567,33 @@ pub async fn mark_sick(
                 .one(txn)
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("Assignment {id} not found")))?;
+
+            if !is_manager {
+                let user_record = crate::models::user::Entity::find()
+                    .filter(crate::models::user::Column::Id.eq(user_id))
+                    .filter(crate::models::user::Column::TenantId.eq(tenant_id))
+                    .one(txn)
+                    .await?
+                    .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+                let all_emps = crate::models::employee::Entity::find()
+                    .filter(crate::models::employee::Column::TenantId.eq(tenant_id))
+                    .all(txn)
+                    .await?;
+                let my_emp = all_emps
+                    .into_iter()
+                    .find(|e| {
+                        e.email
+                            .as_deref()
+                            .map(|em| !em.trim().is_empty() && em.trim().eq_ignore_ascii_case(user_record.email.trim()))
+                            .unwrap_or(false)
+                    })
+                    .ok_or_else(|| AppError::Forbidden("Mitarbeiterprofil nicht gefunden.".to_string()))?;
+
+                if existing.employee_id != my_emp.id {
+                    return Err(AppError::Forbidden("Sie können nur eigene Schichten krankmelden.".to_string()));
+                }
+            }
 
             let emp_id = existing.employee_id;
             let current_notes = existing.notes.clone();
@@ -574,4 +639,480 @@ pub async fn mark_sick(
     .await?;
 
     Ok(Json(updated))
+}
+
+#[derive(Deserialize)]
+pub struct MarkSickRangeInput {
+    pub employee_id: Option<Uuid>,
+    pub start_date: NaiveDate,
+    pub end_date: NaiveDate,
+    pub notes: Option<String>,
+}
+
+/// POST /mark-sick-range — marks all active assignments for an employee in `[start_date, end_date]` as `sick`
+/// and creates open shift swap requests for replacement.
+pub async fn mark_sick_range(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Json(body): Json<MarkSickRangeInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if body.end_date < body.start_date {
+        return Err(AppError::BadRequest(
+            "Das Enddatum darf nicht vor dem Startdatum liegen.".to_string(),
+        ));
+    }
+
+    let is_manager = matches!(auth_user.role.as_str(), "super_admin" | "admin" | "planner");
+    let tenant_id = auth_user.tenant_id;
+    let user_id = auth_user.user_id;
+    let now = chrono::Utc::now().into();
+
+    let (marked_count, swaps_created) = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        Box::pin(async move {
+            let target_emp_id = if is_manager {
+                if let Some(eid) = body.employee_id {
+                    let exists = crate::models::employee::Entity::find()
+                        .filter(crate::models::employee::Column::Id.eq(eid))
+                        .filter(crate::models::employee::Column::TenantId.eq(tenant_id))
+                        .one(txn)
+                        .await?
+                        .is_some();
+                    if !exists {
+                        return Err(AppError::NotFound("Mitarbeiter nicht gefunden.".to_string()));
+                    }
+                    eid
+                } else {
+                    return Err(AppError::BadRequest("Bitte wählen Sie einen Mitarbeiter aus.".to_string()));
+                }
+            } else {
+                let user_record = crate::models::user::Entity::find()
+                    .filter(crate::models::user::Column::Id.eq(user_id))
+                    .filter(crate::models::user::Column::TenantId.eq(tenant_id))
+                    .one(txn)
+                    .await?
+                    .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+                let all_emps = crate::models::employee::Entity::find()
+                    .filter(crate::models::employee::Column::TenantId.eq(tenant_id))
+                    .all(txn)
+                    .await?;
+                let my_emp = all_emps
+                    .into_iter()
+                    .find(|e| {
+                        e.email
+                            .as_deref()
+                            .map(|em| !em.trim().is_empty() && em.trim().eq_ignore_ascii_case(user_record.email.trim()))
+                            .unwrap_or(false)
+                    })
+                    .ok_or_else(|| AppError::Forbidden("Mitarbeiterprofil nicht gefunden.".to_string()))?;
+
+                if let Some(requested_id) = body.employee_id {
+                    if requested_id != my_emp.id {
+                        return Err(AppError::Forbidden("Sie können nur sich selbst krankmelden.".to_string()));
+                    }
+                }
+                my_emp.id
+            };
+
+            let assignments = ShiftAssignment::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::EmployeeId.eq(target_emp_id))
+                .filter(Column::AssignmentDate.gte(body.start_date))
+                .filter(Column::AssignmentDate.lte(body.end_date))
+                .filter(Column::Status.ne("sick"))
+                .all(txn)
+                .await?;
+
+            let note_text = body
+                .notes
+                .clone()
+                .filter(|n| !n.trim().is_empty())
+                .unwrap_or_else(|| "Krankgemeldet".to_string());
+
+            let mut marked = 0usize;
+            let mut swaps = 0usize;
+
+            for assign in assignments {
+                let assign_id = assign.id;
+                let mut active: ActiveModel = assign.into();
+                active.status = Set("sick".to_string());
+                active.notes = Set(Some(note_text.clone()));
+                active.updated_at = Set(now);
+                active.update(txn).await?;
+                marked += 1;
+
+                let existing_swap = crate::models::shift_swap::Entity::find()
+                    .filter(crate::models::shift_swap::Column::TenantId.eq(tenant_id))
+                    .filter(crate::models::shift_swap::Column::AssignmentId.eq(assign_id))
+                    .filter(crate::models::shift_swap::Column::Status.is_in(["open", "proposed"]))
+                    .one(txn)
+                    .await?;
+
+                if existing_swap.is_none() {
+                    let swap_model = crate::models::shift_swap::ActiveModel {
+                        id: Set(Uuid::new_v4()),
+                        tenant_id: Set(tenant_id),
+                        assignment_id: Set(assign_id),
+                        requesting_employee_id: Set(target_emp_id),
+                        target_employee_id: Set(None),
+                        backup_employee_id: Set(None),
+                        status: Set("open".to_string()),
+                        notes: Set(Some(format!("Krankmeldung ({}) – Vertretung gesucht", note_text))),
+                        created_at: Set(now),
+                        updated_at: Set(now),
+                    };
+                    swap_model.insert(txn).await?;
+                    swaps += 1;
+                }
+            }
+
+            Ok((marked, swaps))
+        })
+    })
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "marked_sick_count": marked_count,
+        "swap_requests_created": swaps_created,
+    })))
+}
+
+// ---------------------------------------------------------------------------
+// Week Templates (Feature 5)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+pub struct WeekTemplateEntry {
+    pub employee_id: Uuid,
+    pub shift_type_id: Uuid,
+    pub weekday_offset: i64,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
+pub struct WeekTemplate {
+    pub id: Uuid,
+    pub name: String,
+    pub created_at: String,
+    pub entries: Vec<WeekTemplateEntry>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateWeekTemplateInput {
+    pub name: String,
+    pub source_monday: NaiveDate,
+}
+
+#[derive(Deserialize)]
+pub struct ApplyWeekTemplateInput {
+    pub target_monday: NaiveDate,
+}
+
+/// GET /templates — list saved week templates for the current tenant.
+pub async fn list_templates(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+) -> Result<Json<Vec<WeekTemplate>>, AppError> {
+    require_manager(&auth_user)?;
+    let tenant_id = auth_user.tenant_id;
+
+    let templates = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        Box::pin(async move {
+            let t = crate::models::tenant::Entity::find_by_id(tenant_id)
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Tenant not found".to_string()))?;
+
+            let list: Vec<WeekTemplate> = t
+                .settings
+                .get("week_templates")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            Ok(list)
+        })
+    })
+    .await?;
+
+    Ok(Json(templates))
+}
+
+/// POST /templates — save the assignments of `source_monday` week as a named template.
+pub async fn create_template(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Json(body): Json<CreateWeekTemplateInput>,
+) -> Result<Json<WeekTemplate>, AppError> {
+    require_manager(&auth_user)?;
+    let name = body.name.trim().to_string();
+    if name.is_empty() {
+        return Err(AppError::BadRequest("Bitte geben Sie einen Namen für die Vorlage ein.".to_string()));
+    }
+
+    let tenant_id = auth_user.tenant_id;
+    let source_start = body.source_monday;
+    let source_end = source_start + Duration::days(6);
+
+    let created = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        Box::pin(async move {
+            let assignments = ShiftAssignment::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::AssignmentDate.gte(source_start))
+                .filter(Column::AssignmentDate.lte(source_end))
+                .filter(Column::Status.ne("sick"))
+                .order_by_asc(Column::AssignmentDate)
+                .all(txn)
+                .await?;
+
+            if assignments.is_empty() {
+                return Err(AppError::BadRequest(
+                    "Die gewählte Woche enthält keine aktiven Schichtzuweisungen zum Speichern als Vorlage.".to_string(),
+                ));
+            }
+
+            let entries: Vec<WeekTemplateEntry> = assignments
+                .into_iter()
+                .map(|a| WeekTemplateEntry {
+                    employee_id: a.employee_id,
+                    shift_type_id: a.shift_type_id,
+                    weekday_offset: (a.assignment_date - source_start).num_days().clamp(0, 6),
+                    notes: a.notes,
+                })
+                .collect();
+
+            let new_tpl = WeekTemplate {
+                id: Uuid::new_v4(),
+                name,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                entries,
+            };
+
+            let existing_tenant = crate::models::tenant::Entity::find_by_id(tenant_id)
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Tenant not found".to_string()))?;
+
+            let mut settings = existing_tenant.settings.clone();
+            let mut list: Vec<WeekTemplate> = settings
+                .get("week_templates")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            list.push(new_tpl.clone());
+
+            if let Some(obj) = settings.as_object_mut() {
+                obj.insert(
+                    "week_templates".to_string(),
+                    serde_json::to_value(&list).unwrap_or_default(),
+                );
+            }
+
+            let mut active_tenant: crate::models::tenant::ActiveModel = existing_tenant.into();
+            active_tenant.settings = Set(settings);
+            active_tenant.updated_at = Set(chrono::Utc::now().into());
+            active_tenant.update(txn).await?;
+
+            Ok(new_tpl)
+        })
+    })
+    .await?;
+
+    Ok(Json(created))
+}
+
+/// POST /templates/:id/apply — apply a saved week template to `target_monday`.
+pub async fn apply_template(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(template_id): Path<Uuid>,
+    Json(body): Json<ApplyWeekTemplateInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_manager(&auth_user)?;
+    let tenant_id = auth_user.tenant_id;
+    let target_start = body.target_monday;
+    let target_end = target_start + Duration::days(6);
+    let now = chrono::Utc::now().into();
+
+    let (applied_count, skipped_count) = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        Box::pin(async move {
+            let t = crate::models::tenant::Entity::find_by_id(tenant_id)
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Tenant not found".to_string()))?;
+
+            let list: Vec<WeekTemplate> = t
+                .settings
+                .get("week_templates")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+
+            let tpl = list
+                .into_iter()
+                .find(|x| x.id == template_id)
+                .ok_or_else(|| AppError::NotFound("Vorlage nicht gefunden.".to_string()))?;
+
+            let target_assignments = ShiftAssignment::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::AssignmentDate.gte(target_start))
+                .filter(Column::AssignmentDate.lte(target_end))
+                .filter(Column::Status.ne("sick"))
+                .all(txn)
+                .await?;
+
+            let active_employees = crate::models::employee::Entity::find()
+                .filter(crate::models::employee::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::employee::Column::IsActive.eq(true))
+                .all(txn)
+                .await?;
+            let active_emp_ids: std::collections::HashSet<Uuid> =
+                active_employees.into_iter().map(|e| e.id).collect();
+
+            let active_shift_types = crate::models::shift_type::Entity::find()
+                .filter(crate::models::shift_type::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::shift_type::Column::IsActive.eq(true))
+                .all(txn)
+                .await?;
+            let active_st_ids: std::collections::HashSet<Uuid> =
+                active_shift_types.into_iter().map(|st| st.id).collect();
+
+            let vacations = crate::models::employee_vacation::Entity::find()
+                .filter(crate::models::employee_vacation::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::employee_vacation::Column::Status.eq("approved"))
+                .filter(crate::models::employee_vacation::Column::StartDate.lte(target_end))
+                .filter(crate::models::employee_vacation::Column::EndDate.gte(target_start))
+                .all(txn)
+                .await?;
+
+            let blocked_days = crate::models::employee_blocked_day::Entity::find()
+                .filter(crate::models::employee_blocked_day::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::employee_blocked_day::Column::BlockedDate.gte(target_start))
+                .filter(crate::models::employee_blocked_day::Column::BlockedDate.lte(target_end))
+                .all(txn)
+                .await?;
+
+            let closed_days = crate::models::closed_day::Entity::find()
+                .filter(crate::models::closed_day::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::closed_day::Column::ClosedDate.gte(target_start))
+                .filter(crate::models::closed_day::Column::ClosedDate.lte(target_end))
+                .all(txn)
+                .await?;
+
+            let mut existing_emp_dates: std::collections::HashSet<(Uuid, NaiveDate)> =
+                target_assignments
+                    .into_iter()
+                    .map(|a| (a.employee_id, a.assignment_date))
+                    .collect();
+
+            let mut applied = 0usize;
+            let mut skipped = 0usize;
+
+            for entry in tpl.entries {
+                let target_date = target_start + Duration::days(entry.weekday_offset.clamp(0, 6));
+
+                if !active_emp_ids.contains(&entry.employee_id) || !active_st_ids.contains(&entry.shift_type_id) {
+                    skipped += 1;
+                    continue;
+                }
+
+                let is_company_closed = closed_days
+                    .iter()
+                    .any(|cd| cd.closed_date == target_date && !cd.is_holiday);
+                if is_company_closed {
+                    skipped += 1;
+                    continue;
+                }
+
+                let on_vacation = vacations.iter().any(|v| {
+                    v.employee_id == entry.employee_id
+                        && target_date >= v.start_date
+                        && target_date <= v.end_date
+                });
+                if on_vacation {
+                    skipped += 1;
+                    continue;
+                }
+
+                let is_blocked = blocked_days.iter().any(|b| {
+                    b.employee_id == entry.employee_id && b.blocked_date == target_date
+                });
+                if is_blocked {
+                    skipped += 1;
+                    continue;
+                }
+
+                if existing_emp_dates.contains(&(entry.employee_id, target_date)) {
+                    skipped += 1;
+                    continue;
+                }
+
+                let new_active = ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    tenant_id: Set(tenant_id),
+                    employee_id: Set(entry.employee_id),
+                    shift_type_id: Set(entry.shift_type_id),
+                    assignment_date: Set(target_date),
+                    actual_start: Set(None),
+                    actual_end: Set(None),
+                    actual_break_minutes: Set(None),
+                    status: Set("planned".to_string()),
+                    notes: Set(entry.notes),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                };
+                new_active.insert(txn).await?;
+                existing_emp_dates.insert((entry.employee_id, target_date));
+                applied += 1;
+            }
+
+            Ok((applied, skipped))
+        })
+    })
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "applied_count": applied_count,
+        "skipped_count": skipped_count,
+    })))
+}
+
+/// DELETE /templates/:id — delete a saved week template.
+pub async fn delete_template(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(template_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_manager(&auth_user)?;
+    let tenant_id = auth_user.tenant_id;
+
+    execute_with_tenant(&state.db, &tenant_id, |txn| {
+        Box::pin(async move {
+            let existing_tenant = crate::models::tenant::Entity::find_by_id(tenant_id)
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Tenant not found".to_string()))?;
+
+            let mut settings = existing_tenant.settings.clone();
+            let list: Vec<WeekTemplate> = settings
+                .get("week_templates")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+
+            let new_list: Vec<WeekTemplate> = list.into_iter().filter(|x| x.id != template_id).collect();
+            if let Some(obj) = settings.as_object_mut() {
+                obj.insert(
+                    "week_templates".to_string(),
+                    serde_json::to_value(&new_list).unwrap_or_default(),
+                );
+            }
+
+            let mut active_tenant: crate::models::tenant::ActiveModel = existing_tenant.into();
+            active_tenant.settings = Set(settings);
+            active_tenant.updated_at = Set(chrono::Utc::now().into());
+            active_tenant.update(txn).await?;
+            Ok(())
+        })
+    })
+    .await?;
+
+    Ok(Json(serde_json::json!({ "deleted": true, "id": template_id })))
 }

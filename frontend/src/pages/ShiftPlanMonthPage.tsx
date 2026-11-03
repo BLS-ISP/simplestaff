@@ -140,6 +140,10 @@ export default function ShiftPlanMonthPage() {
   const [autoScheduling, setAutoScheduling] = useState(false);
   const [autoScheduleError, setAutoScheduleError] = useState<string | null>(null);
 
+  // Employee monthly timesheet modal state (Feature 4)
+  const [showTimesheetModal, setShowTimesheetModal] = useState(false);
+  const [timesheetEmpId, setTimesheetEmpId] = useState<string>('');
+
   const days = useMemo(() => getDaysInMonth(year, month), [year, month]);
   const todayStr = useMemo(() => toISODateString(new Date()), []);
 
@@ -149,11 +153,15 @@ export default function ShiftPlanMonthPage() {
     return map;
   }, [shiftTypes]);
 
-  // Build assignment lookup: `empId|date` → ShiftAssignment
+  // Build assignment lookup: `empId|date` → ShiftAssignment (prioritizing active non-sick shifts)
   const assignmentLookup = useMemo(() => {
     const map: Record<string, ShiftAssignment> = {};
     for (const a of assignments) {
-      map[`${a.employee_id}|${a.assignment_date}`] = a;
+      const key = `${a.employee_id}|${a.assignment_date}`;
+      const existing = map[key];
+      if (!existing || existing.status === 'sick' || a.status !== 'sick') {
+        map[key] = a;
+      }
     }
     return map;
   }, [assignments]);
@@ -705,6 +713,22 @@ export default function ShiftPlanMonthPage() {
               </button>
             </>
           )}
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              if (isViewer) {
+                const own = employees.find((e) => e.email && user?.email && e.email.toLowerCase() === user.email.toLowerCase());
+                setTimesheetEmpId(own?.id || employees[0]?.id || '');
+              } else if (!timesheetEmpId && employees.length > 0) {
+                setTimesheetEmpId(employees[0].id);
+              }
+              setShowTimesheetModal(true);
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+            title="Druckbarer Monats-Stundenzettel (Einzelnachweis nach § 16 Abs. 2 ArbZG / § 17 MiLoG)"
+          >
+            📄 Stundenzettel (PDF)
+          </button>
           <button
             className="btn btn-secondary btn-sm"
             onClick={handleExportCSV}
@@ -1587,6 +1611,299 @@ export default function ShiftPlanMonthPage() {
           </div>
         </div>
       )}
+
+      {/* ── Printable Monthly Timesheet Modal (Feature 4) ── */}
+      {showTimesheetModal && (() => {
+        const selectedEmp = employees.find((e) => e.id === timesheetEmpId) || employees[0];
+        if (!selectedEmp) return null;
+
+        const targetHours = getTargetHours(selectedEmp);
+        let totalNetHours = 0;
+        let totalNightHours = 0;
+        let totalSundayHours = 0;
+        let totalHolidayHours = 0;
+        let workDaysCount = 0;
+        let sickDaysCount = 0;
+        let vacationDaysCount = 0;
+
+        const detailRows = days.map((d) => {
+          const dateStr = toISODateString(d);
+          const weekdayLabel = DAY_LABELS[d.getDay()];
+          const dateLabel = d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const ass = assignmentLookup[`${selectedEmp.id}|${dateStr}`];
+          const isVac = vacationLookup.has(`${selectedEmp.id}|${dateStr}`);
+          const closure = closedLookup[dateStr];
+          const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+
+          if (ass) {
+            const st = shiftTypeMap[ass.shift_type_id];
+            if (ass.status === 'sick') {
+              sickDaysCount++;
+              return {
+                dateStr,
+                dateLabel,
+                weekdayLabel,
+                shiftName: st ? st.name : 'Schicht',
+                plannedTime: st ? `${st.start_time.substring(0, 5)} – ${st.end_time.substring(0, 5)}` : '—',
+                actualTime: '—',
+                breakMins: 0,
+                netHours: 0,
+                statusText: '🤒 Krank (AU)',
+                notes: ass.notes || '',
+              };
+            }
+            if (st) {
+              workDaysCount++;
+              const netH = getAssignmentDurationHours(ass, st);
+              totalNetHours += netH;
+              const startStr = ass.actual_start || st.start_time;
+              const endStr = ass.actual_end || st.end_time;
+              totalNightHours += getNightMinutes(startStr, endStr) / 60;
+              if (d.getDay() === 0) totalSundayHours += netH;
+              if (closure?.is_holiday) totalHolidayHours += netH;
+              return {
+                dateStr,
+                dateLabel,
+                weekdayLabel,
+                shiftName: st.name,
+                plannedTime: `${st.start_time.substring(0, 5)} – ${st.end_time.substring(0, 5)}`,
+                actualTime: `${startStr.substring(0, 5)} – ${endStr.substring(0, 5)}`,
+                breakMins: ass.actual_break_minutes ?? st.break_minutes,
+                netHours: netH,
+                statusText: ass.actual_start || ass.actual_end || ass.status === 'completed' ? '✓ Erfasst' : 'Geplant',
+                notes: ass.notes || '',
+              };
+            }
+          }
+
+          if (isVac && !isWeekend && !closure) {
+            vacationDaysCount++;
+            return {
+              dateStr,
+              dateLabel,
+              weekdayLabel,
+              shiftName: 'Urlaub',
+              plannedTime: '—',
+              actualTime: '—',
+              breakMins: 0,
+              netHours: 0,
+              statusText: '🏖️ Genehmigter Urlaub',
+              notes: '',
+            };
+          }
+
+          return null;
+        }).filter(Boolean) as {
+          dateStr: string;
+          dateLabel: string;
+          weekdayLabel: string;
+          shiftName: string;
+          plannedTime: string;
+          actualTime: string;
+          breakMins: number;
+          netHours: number;
+          statusText: string;
+          notes: string;
+        }[];
+
+        const diffHours = totalNetHours - targetHours;
+
+        const handlePrintTimesheet = () => {
+          const w = window.open('', '_blank', 'width=900,height=800');
+          if (!w) return;
+          const empName = getEmployeeName(selectedEmp);
+          const monthTitle = `${MONTH_NAMES_DE[month]} ${year}`;
+          const rowsHtml = detailRows.length === 0
+            ? `<tr><td colspan="8" style="text-align:center;padding:16px;color:#666;">Keine Einträge in diesem Monat</td></tr>`
+            : detailRows.map((r) => `
+                <tr>
+                  <td>${r.dateLabel}</td>
+                  <td>${r.weekdayLabel}</td>
+                  <td><strong>${r.shiftName}</strong></td>
+                  <td>${r.plannedTime}</td>
+                  <td>${r.actualTime}</td>
+                  <td style="text-align:right;">${r.breakMins > 0 ? r.breakMins + ' Min.' : '—'}</td>
+                  <td style="text-align:right;font-weight:600;">${r.netHours > 0 ? r.netHours.toFixed(2) + ' h' : '—'}</td>
+                  <td>${r.statusText}${r.notes ? ' (' + r.notes + ')' : ''}</td>
+                </tr>
+              `).join('');
+
+          w.document.write(`<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>Stundenzettel – ${empName} – ${monthTitle}</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 28px; font-size: 12px; }
+    h1 { font-size: 18px; margin: 0 0 4px 0; }
+    .meta { color: #444; margin-bottom: 16px; font-size: 12px; }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+    .summary-box { border: 1px solid #ccc; border-radius: 4px; padding: 8px 10px; background: #f9fafb; }
+    .summary-box .lbl { font-size: 10px; color: #555; text-transform: uppercase; }
+    .summary-box .val { font-size: 15px; font-weight: bold; margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; font-size: 11px; }
+    th { background: #f3f4f6; font-weight: bold; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 48px; page-break-inside: avoid; }
+    .sig-line { border-top: 1px solid #222; padding-top: 6px; font-size: 11px; color: #333; }
+    @media print { body { margin: 12mm; } }
+  </style>
+</head>
+<body>
+  <h1>Arbeitszeitnachweis / Monats-Stundenzettel (${monthTitle})</h1>
+  <div class="meta">
+    Betrieb: <strong>${tenantName || 'SimpleStaff'}</strong> &nbsp;|&nbsp;
+    Mitarbeiter: <strong>${empName}</strong> &nbsp;|&nbsp;
+    Erstellt am: ${new Date().toLocaleDateString('de-DE')} (gem. § 16 Abs. 2 ArbZG / § 17 MiLoG)
+  </div>
+  <div class="summary-grid">
+    <div class="summary-box"><div class="lbl">Soll-Stunden</div><div class="val">${targetHours.toFixed(2)} h</div></div>
+    <div class="summary-box"><div class="lbl">Ist-Stunden (Netto)</div><div class="val">${totalNetHours.toFixed(2)} h</div></div>
+    <div class="summary-box"><div class="lbl">Differenz (Ist - Soll)</div><div class="val">${diffHours >= 0 ? '+' : ''}${diffHours.toFixed(2)} h</div></div>
+    <div class="summary-box"><div class="lbl">Schichten / Urlaub / Krank</div><div class="val">${workDaysCount} / ${vacationDaysCount} / ${sickDaysCount}</div></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Tag</th>
+        <th>Schicht / Grund</th>
+        <th>Soll-Zeit</th>
+        <th>Ist-Zeit</th>
+        <th style="text-align:right;">Pause</th>
+        <th style="text-align:right;">Netto-Std.</th>
+        <th>Status / Bemerkung</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+  </table>
+  <div style="font-size:11px;color:#444;margin-bottom:12px;">
+    Zusatz-Auswertung: Nachtstunden (22:00–06:00): <strong>${totalNightHours.toFixed(2)} h</strong> &nbsp;|&nbsp;
+    Sonntagsstunden: <strong>${totalSundayHours.toFixed(2)} h</strong> &nbsp;|&nbsp;
+    Feiertagsstunden: <strong>${totalHolidayHours.toFixed(2)} h</strong>
+  </div>
+  <div class="signatures">
+    <div class="sig-line">Ort, Datum – Unterschrift Arbeitgeber / Betriebsleitung</div>
+    <div class="sig-line">Ort, Datum – Unterschrift Arbeitnehmer (${empName})</div>
+  </div>
+</body>
+</html>`);
+          w.document.close();
+          w.focus();
+          setTimeout(() => w.print(), 250);
+        };
+
+        return (
+          <div className="modal-backdrop" onClick={() => setShowTimesheetModal(false)}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 840, width: '95%', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-sm)', flexWrap: 'wrap', marginBottom: 'var(--space-md)' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>
+                    📄 Monats-Stundenzettel ({MONTH_NAMES_DE[month]} {year})
+                  </h3>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    Einzelnachweis nach § 16 Abs. 2 ArbZG / § 17 MiLoG
+                  </span>
+                </div>
+                {!isViewer && (
+                  <select
+                    className="input"
+                    style={{ width: 'auto', minWidth: 220, padding: '6px 10px' }}
+                    value={selectedEmp.id}
+                    onChange={(e) => setTimesheetEmpId(e.target.value)}
+                  >
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {getEmployeeName(emp)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)' }}>
+                <div style={{ padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-primary)' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Soll-Stunden</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 700 }}>{targetHours.toFixed(1)} h</div>
+                </div>
+                <div style={{ padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-primary)' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Ist-Stunden (Netto)</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--accent)' }}>{totalNetHours.toFixed(2)} h</div>
+                </div>
+                <div style={{ padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-primary)' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Differenz</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 700, color: diffHours >= 0 ? 'var(--success)' : 'var(--warning)' }}>
+                    {diffHours >= 0 ? '+' : ''}{diffHours.toFixed(2)} h
+                  </div>
+                </div>
+                <div style={{ padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-primary)' }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Dienste / Urlaub / Krank</div>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 700 }}>
+                    {workDaysCount} / {vacationDaysCount} / {sickDaysCount}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ overflowY: 'auto', flex: 1, border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-sm)', marginBottom: 'var(--space-md)' }}>
+                <table style={{ width: '100%', fontSize: '0.82rem', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-primary)' }}>
+                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Datum</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Tag</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Schicht</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Geplant</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Ist-Zeit</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Pause</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Netto</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'left' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} style={{ padding: 'var(--space-xl)', textAlign: 'center', color: 'var(--text-muted)' }}>
+                          Keine Schichten oder Abwesenheiten in diesem Monat.
+                        </td>
+                      </tr>
+                    ) : (
+                      detailRows.map((r) => (
+                        <tr key={r.dateStr} style={{ borderBottom: '1px solid var(--border-primary)' }}>
+                          <td style={{ padding: '6px 10px' }}>{r.dateLabel}</td>
+                          <td style={{ padding: '6px 10px' }}>{r.weekdayLabel}</td>
+                          <td style={{ padding: '6px 10px', fontWeight: 600 }}>{r.shiftName}</td>
+                          <td style={{ padding: '6px 10px' }}>{r.plannedTime}</td>
+                          <td style={{ padding: '6px 10px' }}>{r.actualTime}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right' }}>{r.breakMins > 0 ? `${r.breakMins} m` : '—'}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>
+                            {r.netHours > 0 ? `${r.netHours.toFixed(2)} h` : '—'}
+                          </td>
+                          <td style={{ padding: '6px 10px' }}>{r.statusText}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-sm)' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  Nacht: {totalNightHours.toFixed(2)} h | Sonntag: {totalSundayHours.toFixed(2)} h | Feiertag: {totalHolidayHours.toFixed(2)} h
+                </span>
+                <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowTimesheetModal(false)}>
+                    Schließen
+                  </button>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={handlePrintTimesheet}>
+                    🖨️ Drucken / Als PDF speichern
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

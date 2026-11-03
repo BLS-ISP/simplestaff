@@ -35,6 +35,9 @@ export default function ShiftSwapsPage() {
   const [notes, setNotes] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
 
+  // Manager direct-assignment selection per open swap id
+  const [directAssignMap, setDirectAssignMap] = useState<Record<string, string>>({});
+
   useEffect(() => {
     fetchData();
   }, [userRole]);
@@ -69,7 +72,7 @@ export default function ShiftSwapsPage() {
         const end = toLocalISODate(nextMonth);
 
         const assigns = await api.assignments.list({ start_date: today, end_date: end });
-        setMyUpcomingAssignments(assigns.filter(a => a.employee_id === me.id));
+        setMyUpcomingAssignments(assigns.filter(a => a.employee_id === me.id && a.status !== 'sick'));
       }
     } catch (err) {
       console.error('Error loading shift swaps data:', err);
@@ -133,12 +136,12 @@ export default function ShiftSwapsPage() {
     }
   };
 
-  const handleApprove = async (swapId: string) => {
+  const handleApprove = async (swapId: string, backupEmployeeId?: string) => {
     try {
       setError(null);
       setSuccess(null);
-      await api.shiftSwaps.approve(swapId);
-      setSuccess('Der Schichttausch wurde genehmigt und der Dienstplan aktualisiert.');
+      await api.shiftSwaps.approve(swapId, backupEmployeeId);
+      setSuccess('Der Schichttausch / die Vertretung wurde genehmigt und der Dienstplan aktualisiert.');
       await fetchData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Genehmigung fehlgeschlagen.');
@@ -158,8 +161,9 @@ export default function ShiftSwapsPage() {
   };
 
   const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(y, (m || 1) - 1, d || 1);
+    return dt.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   const getStatusBadge = (status: string) => {
@@ -195,9 +199,10 @@ export default function ShiftSwapsPage() {
   const mySwaps = swaps.filter(s => myEmployee && s.requesting_employee_id === myEmployee.id);
   const myApplications = swaps.filter(s => myEmployee && s.backup_employee_id === myEmployee.id);
 
-  // Filter proposed swaps for planners
+  // Filter swaps for planners
   const proposedSwaps = swaps.filter(s => s.status === 'proposed');
-  const pastSwaps = swaps.filter(s => s.status !== 'proposed');
+  const openSwapsForManager = swaps.filter(s => s.status === 'open');
+  const pastSwaps = swaps.filter(s => s.status !== 'proposed' && s.status !== 'open');
 
   const shiftTypeMap = new Map(shiftTypes.map(st => [st.id, st]));
 
@@ -392,6 +397,88 @@ export default function ShiftSwapsPage() {
                         </td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Open Swap & Sick Replacement Requests (Direct Assignment) */}
+          <div className="glass-card" style={{ padding: 'var(--space-lg)' }}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 600, margin: '0 0 var(--space-xs) 0', color: 'var(--text-primary)' }}>
+              Offene Vertretungs- & Tauschgesuche (`open`)
+            </h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-md)' }}>
+              Hier kannst du für offene Krankmeldungen oder Tauschgesuche direkt einen verfügbaren Ersatz-Mitarbeiter auswählen und fest einteilen.
+            </p>
+            {openSwapsForManager.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-md)' }}>Keine offenen Vertretungsgesuche ohne Bewerber.</p>
+            ) : (
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Datum</th>
+                      <th>Schichttyp</th>
+                      <th>Ursprünglich</th>
+                      <th>Notiz / Grund</th>
+                      <th>Ersatz-Mitarbeiter wählen</th>
+                      <th style={{ textAlign: 'right' }}>Aktionen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {openSwapsForManager.map(swap => {
+                      const selectedBackup = directAssignMap[swap.id] || swap.target_employee_id || '';
+                      return (
+                        <tr key={swap.id}>
+                          <td style={{ fontWeight: 600 }}>{formatDate(swap.assignment_date)}</td>
+                          <td>
+                            <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 'var(--radius-sm)', background: `${swap.color}20`, color: swap.color, fontSize: '0.8rem', fontWeight: 500 }}>
+                              {swap.shift_type_name} ({swap.start_time}–{swap.end_time})
+                            </span>
+                          </td>
+                          <td>{swap.requesting_employee_name}</td>
+                          <td style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{swap.notes || '—'}</td>
+                          <td>
+                            <select
+                              className="input"
+                              style={{ padding: '4px 8px', fontSize: '0.82rem', minWidth: '180px' }}
+                              value={selectedBackup}
+                              onChange={(e) => setDirectAssignMap(prev => ({ ...prev, [swap.id]: e.target.value }))}
+                            >
+                              <option value="">-- Ersatz wählen --</option>
+                              {employees
+                                .filter(emp => emp.id !== swap.requesting_employee_id)
+                                .map(emp => (
+                                  <option key={emp.id} value={emp.id}>
+                                    {emp.first_name} {emp.last_name}
+                                  </option>
+                                ))}
+                            </select>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: 'var(--space-xs)' }}>
+                              <button
+                                className="btn btn-sm btn-success"
+                                disabled={!selectedBackup}
+                                onClick={() => handleApprove(swap.id, selectedBackup)}
+                                style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                              >
+                                ✓ Direkt zuweisen
+                              </button>
+                              <button
+                                className="btn btn-sm btn-danger"
+                                onClick={() => handleCancel(swap.id)}
+                                style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+                                title="Offenes Gesuch stornieren"
+                              >
+                                🗑️ Stornieren
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

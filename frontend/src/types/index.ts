@@ -330,3 +330,21 @@ export interface CreateShiftSwapRequest {
   target_employee_id?: string;
   notes?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Week Templates
+// ---------------------------------------------------------------------------
+
+export interface WeekTemplateEntry {
+  employee_id: string;
+  shift_type_id: string;
+  weekday_offset: number;
+  notes?: string | null;
+}
+
+export interface WeekTemplate {
+  id: string;
+  name: string;
+  created_at: string;
+  entries: WeekTemplateEntry[];
+}

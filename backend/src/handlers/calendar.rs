@@ -58,6 +58,7 @@ async fn fetch_assignments_with_shift_types(
     let assignments = shift_assignment::Entity::find()
         .filter(shift_assignment::Column::EmployeeId.eq(employee_id))
         .filter(shift_assignment::Column::TenantId.eq(tenant_id))
+        .filter(shift_assignment::Column::Status.ne("sick"))
         .order_by_asc(shift_assignment::Column::AssignmentDate)
         .all(db)
         .await?;
