@@ -2,7 +2,6 @@ use chrono::{Datelike, Duration, NaiveDate, NaiveTime};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
-use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::errors::AppError;
@@ -13,7 +12,11 @@ use crate::models::{
     shift_swap,
     shift_type::{self, Entity as ShiftType},
 };
-use crate::services::validation_service::calculate_shift_duration;
+use crate::services::validation_service::{
+    calculate_shift_duration_for_employee, effective_max_consecutive_days,
+    effective_max_daily_hours, effective_max_weekly_hours, effective_min_rest_hours,
+    is_night_shift, month_bounds, violates_protected_time_window,
+};
 
 fn calculate_rest(prev_start: NaiveTime, prev_end: NaiveTime, next_start: NaiveTime) -> f64 {
     let is_overnight = prev_end < prev_start;
@@ -74,6 +77,16 @@ pub async fn run_auto_schedule(
         .and_then(|v| v.as_f64())
         .unwrap_or(11.0);
 
+    let tenant_max_consecutive_days = tenant_settings
+        .and_then(|s| s.get("max_consecutive_days"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(6) as u32;
+
+    let max_consecutive_night_shifts = tenant_settings
+        .and_then(|s| s.get("max_consecutive_night_shifts"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(4) as u32;
+
     // 2. Fetch active employees & all shift types
     let active_employees = employee::Entity::find()
         .filter(employee::Column::TenantId.eq(*tenant_id))
@@ -115,12 +128,18 @@ pub async fn run_auto_schedule(
         .all(&txn)
         .await?;
 
-    // 4. Determine calendar weeks for the range (plus 1 border day before/after) to load existing assignments
+    // 4. Determine query bounds covering calendar weeks, full months, and 14-day streak lookback/lookahead
     let weekday_start = start_date.weekday().num_days_from_monday();
-    let query_start = (start_date - Duration::days(weekday_start as i64)).min(start_date - Duration::days(1));
+    let (start_month_first, _) = month_bounds(start_date);
+    let query_start = (start_date - Duration::days(weekday_start as i64))
+        .min(start_date - Duration::days(14))
+        .min(start_month_first);
 
     let weekday_end = end_date.weekday().num_days_from_monday();
-    let query_end = (end_date + Duration::days((6 - weekday_end) as i64)).max(end_date + Duration::days(1));
+    let (_, end_month_last) = month_bounds(end_date);
+    let query_end = (end_date + Duration::days((6 - weekday_end) as i64))
+        .max(end_date + Duration::days(14))
+        .max(end_month_last);
 
     let all_range_assignments = ShiftAssignment::find()
         .filter(shift_assignment::Column::TenantId.eq(*tenant_id))
@@ -157,13 +176,18 @@ pub async fn run_auto_schedule(
 
         if is_preserved {
             if let Some(st) = all_shift_types.iter().find(|t| t.id == ass.shift_type_id) {
+                let emp_profile = active_employees
+                    .iter()
+                    .find(|e| e.id == ass.employee_id)
+                    .map(employee::get_protection_profile)
+                    .unwrap_or("standard");
                 assignments.push(TempAssignment {
                     employee_id: ass.employee_id,
                     shift_type_id: ass.shift_type_id,
                     date: ass.assignment_date,
                     start_time: st.start_time,
                     end_time: st.end_time,
-                    duration: calculate_shift_duration(st, &tenant.settings),
+                    duration: calculate_shift_duration_for_employee(st, &tenant.settings, emp_profile),
                     is_new: false,
                 });
             }
@@ -182,6 +206,15 @@ pub async fn run_auto_schedule(
             .sum()
     };
 
+    let get_monthly_hours = |emp_id: Uuid, date: NaiveDate, ass_list: &[TempAssignment]| -> f64 {
+        let (month_start, month_end) = month_bounds(date);
+        ass_list
+            .iter()
+            .filter(|a| a.employee_id == emp_id && a.date >= month_start && a.date <= month_end)
+            .map(|a| a.duration)
+            .sum()
+    };
+
     let get_daily_hours = |emp_id: Uuid, date: NaiveDate, ass_list: &[TempAssignment]| -> f64 {
         ass_list
             .iter()
@@ -195,6 +228,46 @@ pub async fn run_auto_schedule(
             .iter()
             .any(|a| a.employee_id == emp_id && a.date == date)
     };
+
+    let get_consecutive_days_if_assigned =
+        |emp_id: Uuid, date: NaiveDate, ass_list: &[TempAssignment]| -> u32 {
+            let mut before = 0u32;
+            let mut d_prev = date - Duration::days(1);
+            while is_assigned(emp_id, d_prev, ass_list) {
+                before += 1;
+                d_prev -= Duration::days(1);
+            }
+            let mut after = 0u32;
+            let mut d_next = date + Duration::days(1);
+            while is_assigned(emp_id, d_next, ass_list) {
+                after += 1;
+                d_next += Duration::days(1);
+            }
+            before + 1 + after
+        };
+
+    let has_night_shift_on = |emp_id: Uuid, date: NaiveDate, ass_list: &[TempAssignment]| -> bool {
+        ass_list
+            .iter()
+            .any(|a| a.employee_id == emp_id && a.date == date && is_night_shift(a.start_time, a.end_time))
+    };
+
+    let get_consecutive_nights_if_assigned =
+        |emp_id: Uuid, date: NaiveDate, ass_list: &[TempAssignment]| -> u32 {
+            let mut before = 0u32;
+            let mut d_prev = date - Duration::days(1);
+            while has_night_shift_on(emp_id, d_prev, ass_list) {
+                before += 1;
+                d_prev -= Duration::days(1);
+            }
+            let mut after = 0u32;
+            let mut d_next = date + Duration::days(1);
+            while has_night_shift_on(emp_id, d_next, ass_list) {
+                after += 1;
+                d_next += Duration::days(1);
+            }
+            before + 1 + after
+        };
 
     // 7. Core Greedy Solver Loop
     let mut current_date = start_date;
@@ -240,8 +313,28 @@ pub async fn run_auto_schedule(
             }
             let needed = min_required - already_staffed;
             let mut candidates = Vec::new();
+            let shift_is_night = is_night_shift(st.start_time, st.end_time);
 
             for emp in &active_employees {
+                let protection_profile = employee::get_protection_profile(emp);
+
+                // Statutory JArbSchG & MuSchG time window and Sunday/Holiday checks
+                if violates_protected_time_window(st.start_time, st.end_time, protection_profile).is_some() {
+                    continue;
+                }
+                if protection_profile == "youth" && (day_of_week == 7 || is_hol) {
+                    continue;
+                }
+                if protection_profile == "youth_hospitality" && day_of_week == 7 {
+                    let prev_sunday = current_date - Duration::days(7);
+                    let next_sunday = current_date + Duration::days(7);
+                    if is_assigned(emp.id, prev_sunday, &assignments)
+                        || is_assigned(emp.id, next_sunday, &assignments)
+                    {
+                        continue;
+                    }
+                }
+
                 // Check approved vacation
                 let has_vacation = vacations
                     .iter()
@@ -265,31 +358,56 @@ pub async fn run_auto_schedule(
                     continue;
                 }
 
-                // Check daily limit
-                let shift_dur = calculate_shift_duration(st, &tenant.settings);
+                // Check daily limit (accounting for JArbSchG / MuSchG)
+                let shift_dur = calculate_shift_duration_for_employee(st, &tenant.settings, protection_profile);
                 let day_hours = get_daily_hours(emp.id, current_date, &assignments);
-                if day_hours + shift_dur > max_daily_hours {
+                let emp_max_daily = effective_max_daily_hours(max_daily_hours, protection_profile);
+                if day_hours + shift_dur > emp_max_daily {
                     continue;
                 }
 
-                // Check weekly limit (employee weekly_hours and tenant max_weekly_hours)
+                // Check weekly limit (employee weekly_hours, tenant max_weekly_hours, and JArbSchG/MuSchG 40h cap)
                 let current_weekday = current_date.weekday().num_days_from_monday();
                 let week_monday = current_date - Duration::days(current_weekday as i64);
                 let week_hours = get_weekly_hours(emp.id, week_monday, &assignments);
-                let emp_weekly_limit = match tenant_max_weekly_hours {
-                    Some(t_max) => (emp.weekly_hours as f64).min(t_max),
-                    None => emp.weekly_hours as f64,
-                };
+                let emp_weekly_limit = effective_max_weekly_hours(
+                    emp.weekly_hours as f64,
+                    tenant_max_weekly_hours,
+                    protection_profile,
+                );
                 if week_hours + shift_dur > emp_weekly_limit {
                     continue;
                 }
 
-                // Check rest period (11 hours) against previous day AND next day
+                // Check monthly hours limit (Minijob / Vertragskontingent)
+                if let Some(monthly_max) = emp.monthly_hours.filter(|&m| m > 0.0) {
+                    let month_hours = get_monthly_hours(emp.id, current_date, &assignments);
+                    if month_hours + shift_dur > monthly_max as f64 {
+                        continue;
+                    }
+                }
+
+                // Check max consecutive working days (§ 11 Abs. 3 ArbZG / § 15 JArbSchG)
+                let emp_max_consec = effective_max_consecutive_days(tenant_max_consecutive_days, protection_profile);
+                if get_consecutive_days_if_assigned(emp.id, current_date, &assignments) > emp_max_consec {
+                    continue;
+                }
+
+                // Check max consecutive night shifts (§ 6 Abs. 1 ArbZG)
+                if shift_is_night
+                    && get_consecutive_nights_if_assigned(emp.id, current_date, &assignments)
+                        > max_consecutive_night_shifts
+                {
+                    continue;
+                }
+
+                // Check rest period against previous day AND next day (accounting for 12h JArbSchG / 11h MuSchG)
+                let emp_min_rest = effective_min_rest_hours(min_rest_hours, protection_profile);
                 let prev_date = current_date.pred_opt().unwrap();
                 let violates_prev_rest = assignments
                     .iter()
                     .filter(|a| a.employee_id == emp.id && a.date == prev_date)
-                    .any(|a| calculate_rest(a.start_time, a.end_time, st.start_time) < min_rest_hours);
+                    .any(|a| calculate_rest(a.start_time, a.end_time, st.start_time) < emp_min_rest);
                 if violates_prev_rest {
                     continue;
                 }
@@ -298,18 +416,13 @@ pub async fn run_auto_schedule(
                 let violates_next_rest = assignments
                     .iter()
                     .filter(|a| a.employee_id == emp.id && a.date == next_date)
-                    .any(|a| calculate_rest(st.start_time, st.end_time, a.start_time) < min_rest_hours);
+                    .any(|a| calculate_rest(st.start_time, st.end_time, a.start_time) < emp_min_rest);
                 if violates_next_rest {
                     continue;
                 }
 
                 // Candidate is eligible! Compute score.
-                let prefs_map: HashMap<String, i32> = serde_json::from_value(emp.shift_preferences.clone())
-                    .unwrap_or_default();
-                let pref_key = format!("{}:{}", st.id, day_of_week);
-                let pref = prefs_map.get(&pref_key).copied()
-                    .or_else(|| prefs_map.get(&st.id.to_string()).copied()) // fallback to general pref
-                    .unwrap_or(3); // default is 3
+                let pref = employee::get_shift_pref(emp, &st.id, day_of_week);
                 
                 // If pref is 1 (Sperrzeit), skip this candidate entirely for this shift
                 if pref == 1 {
@@ -319,7 +432,7 @@ pub async fn run_auto_schedule(
                 let week_ratio = week_hours / emp_weekly_limit.max(1.0);
                 let score = pref as f64 - week_ratio * 10.0;
 
-                candidates.push((emp, score));
+                candidates.push((emp, score, shift_dur));
             }
 
             // Sort candidate employees by score descending
@@ -328,14 +441,14 @@ pub async fn run_auto_schedule(
             // Assign top scoring candidates
             let to_assign = needed.min(candidates.len());
             for i in 0..to_assign {
-                let emp = candidates[i].0;
+                let (emp, _, shift_dur) = candidates[i];
                 assignments.push(TempAssignment {
                     employee_id: emp.id,
                     shift_type_id: st.id,
                     date: current_date,
                     start_time: st.start_time,
                     end_time: st.end_time,
-                    duration: calculate_shift_duration(st, &tenant.settings),
+                    duration: shift_dur,
                     is_new: true,
                 });
             }

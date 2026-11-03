@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
-import type { Employee, PaginatedResponse, CreateEmployeeRequest } from '../types';
+import type { Employee, PaginatedResponse, CreateEmployeeRequest, ProtectionProfile } from '../types';
 import { useAuth } from '../hooks/useAuth';
 
 // ── Inline SVG Icons ──
@@ -129,17 +129,28 @@ function AddEmployeeModal({ open, onClose, onSave, saving }: AddModalProps) {
     email: '',
     phone: '',
     weekly_hours: 40,
+    monthly_hours: undefined,
     vacation_days_per_year: 30,
+    protection_profile: 'standard',
   });
 
-  const handleChange = (field: keyof CreateEmployeeRequest, value: string | number) => {
+  const handleChange = (field: keyof CreateEmployeeRequest, value: string | number | undefined) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await onSave(form);
-    setForm({ first_name: '', last_name: '', email: '', phone: '', weekly_hours: 40, vacation_days_per_year: 30 });
+    setForm({
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      weekly_hours: 40,
+      monthly_hours: undefined,
+      vacation_days_per_year: 30,
+      protection_profile: 'standard',
+    });
   };
 
   if (!open) return null;
@@ -278,6 +289,42 @@ function AddEmployeeModal({ open, onClose, onSave, saving }: AddModalProps) {
                 value={form.vacation_days_per_year ?? 30}
                 onChange={(e) => handleChange('vacation_days_per_year', parseInt(e.target.value) || 0)}
               />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
+            <div className="form-group">
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 'var(--space-xs)' }}>
+                Max. Monatsstunden (Minijob, optional)
+              </label>
+              <input
+                className="input"
+                type="number"
+                min="0"
+                max="250"
+                step="0.5"
+                placeholder="z.B. 43 (leer = kein Limit)"
+                value={form.monthly_hours ?? ''}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  handleChange('monthly_hours', isNaN(val) || val <= 0 ? undefined : val);
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 'var(--space-xs)' }}>
+                Arbeitsrecht-Schutzprofil
+              </label>
+              <select
+                className="input"
+                value={form.protection_profile || 'standard'}
+                onChange={(e) => handleChange('protection_profile', e.target.value as ProtectionProfile)}
+              >
+                <option value="standard">👤 Volljährig (Standard ArbZG)</option>
+                <option value="youth">🔞 Jugendlicher &lt; 18 J. (JArbSchG)</option>
+                <option value="youth_hospitality">🥐 Jugendlicher ab 16 J. Gastro/Bäckerei (§ 14 JArbSchG)</option>
+                <option value="maternity">🤰 Mutterschutz – Schwangere/Stillende (MuSchG)</option>
+              </select>
             </div>
           </div>
 
@@ -612,9 +659,29 @@ export default function EmployeesPage() {
                 {user && emp.user_id === user.id && (
                   <span className="badge badge-warning">👑 Mein Profil</span>
                 )}
+                {emp.shift_preferences?._protection_profile === 'youth' && (
+                  <span className="badge badge-danger" title="Jugendarbeitsschutzgesetz (max. 8h/Tag, 12h Ruhe, 06–20 Uhr, So/Feiertag frei)">
+                    🔞 JArbSchG (&lt;18)
+                  </span>
+                )}
+                {emp.shift_preferences?._protection_profile === 'youth_hospitality' && (
+                  <span className="badge badge-warning" title="Jugendarbeitsschutz Gastgewerbe (§ 14 Abs. 2 JArbSchG: 05–22 Uhr, jeder 2. Sonntag frei)">
+                    🥐 JArbSchG (Gastro)
+                  </span>
+                )}
+                {emp.shift_preferences?._protection_profile === 'maternity' && (
+                  <span className="badge badge-warning" title="Mutterschutzgesetz (max. 8,5h/Tag, 06–20 Uhr, mind. 11h Ruhezeit)">
+                    🤰 Mutterschutz (MuSchG)
+                  </span>
+                )}
                 <span className="badge badge-info">
                   Wochenstunden: {emp.weekly_hours} h
                 </span>
+                {emp.monthly_hours && emp.monthly_hours > 0 ? (
+                  <span className="badge badge-warning" title="Monatliche Höchstarbeitszeit (z. B. Minijob-Grenze)">
+                    ⏱️ Max. {emp.monthly_hours} h/Monat
+                  </span>
+                ) : null}
                 <span className="badge badge-success">
                   Resturlaub: {emp.vacation_days_remaining} Tage
                 </span>

@@ -15,6 +15,7 @@ import type {
   UpdateEmployeeRequest,
   CreateBlockedDayRequest,
   CreateVacationRequest,
+  ProtectionProfile,
 } from '../types';
 import { useAuth } from '../hooks/useAuth';
 
@@ -86,8 +87,10 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
     email: employee.email ?? '',
     phone: employee.phone ?? '',
     weekly_hours: employee.weekly_hours,
+    monthly_hours: employee.monthly_hours ?? 0,
     vacation_days_per_year: employee.vacation_days_per_year,
     vacation_days_remaining: employee.vacation_days_remaining,
+    protection_profile: ((employee.shift_preferences?._protection_profile as ProtectionProfile) || 'standard') as ProtectionProfile,
     is_active: employee.is_active,
   });
 
@@ -216,8 +219,10 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
       email: employee.email ?? '',
       phone: employee.phone ?? '',
       weekly_hours: employee.weekly_hours,
+      monthly_hours: employee.monthly_hours ?? 0,
       vacation_days_per_year: employee.vacation_days_per_year,
       vacation_days_remaining: employee.vacation_days_remaining,
+      protection_profile: ((employee.shift_preferences?._protection_profile as ProtectionProfile) || 'standard') as ProtectionProfile,
       is_active: employee.is_active,
     });
   }, [employee]);
@@ -332,6 +337,66 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
             </div>
           </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
+            <div className="form-group">
+              <label style={labelStyle}>Max. Monatsstunden (z. B. Minijob)</label>
+              <input
+                className="input"
+                type="number"
+                min="0"
+                max="250"
+                step="0.5"
+                placeholder="0 = Kein Monatslimit"
+                value={form.monthly_hours || ''}
+                onChange={(e) => setForm((f) => ({ ...f, monthly_hours: parseFloat(e.target.value) || 0 }))}
+              />
+              <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginTop: 4, display: 'block' }}>
+                Leer oder 0 lassen für kein Limit. Bei Minijobbern z. B. 43 Std.
+              </span>
+            </div>
+            <div className="form-group">
+              <label style={labelStyle}>⚖️ Arbeitsrecht-Schutzprofil</label>
+              <select
+                className="input"
+                value={form.protection_profile}
+                onChange={(e) => setForm((f) => ({ ...f, protection_profile: e.target.value as ProtectionProfile }))}
+              >
+                <option value="standard">👤 Volljährig (Standard ArbZG)</option>
+                <option value="youth">🔞 Jugendlicher &lt; 18 J. (JArbSchG)</option>
+                <option value="youth_hospitality">🥐 Jugendlicher ab 16 J. Gastro/Bäckerei (§ 14 JArbSchG)</option>
+                <option value="maternity">🤰 Mutterschutz – Schwangere/Stillende (MuSchG)</option>
+              </select>
+            </div>
+          </div>
+
+          {form.protection_profile !== 'standard' && (
+            <div style={{
+              marginTop: 'var(--space-md)',
+              padding: '10px 12px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              fontSize: '0.78rem',
+              color: 'var(--text-secondary)',
+            }}>
+              {form.protection_profile === 'youth' && (
+                <span>
+                  🔞 <strong>JArbSchG aktiv:</strong> Max. 8h/Tag, max. 40h/Woche, max. 5 Tage/Woche, mind. 12h Ruhezeit, erhöhte Pausen (ab 4,5h → 30m, ab 6h → 60m), Nachtarbeitsverbot (nur 06:00–20:00 Uhr), Sonn- und Feiertagsverbot.
+                </span>
+              )}
+              {form.protection_profile === 'youth_hospitality' && (
+                <span>
+                  🥐 <strong>JArbSchG Gastgewerbe/Bäckerei (§ 14 Abs. 2 &amp; § 17 Abs. 2):</strong> Max. 8h/Tag, 40h/Woche, 5 Tage/Woche, 12h Ruhezeit, erhöhte Pausen, Arbeitszeitfenster 05:00–22:00 Uhr, mindestens jeder 2. Sonntag beschäftigungsfrei.
+                </span>
+              )}
+              {form.protection_profile === 'maternity' && (
+                <span>
+                  🤰 <strong>MuSchG aktiv:</strong> Max. 8,5h/Tag, max. 40h/Woche, mind. 11h ununterbrochene Ruhezeit, Nachtarbeitsverbot (20:00–06:00 Uhr).
+                </span>
+              )}
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-xl)', flexWrap: 'wrap', gap: 'var(--space-md)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
               <input
@@ -405,6 +470,24 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
               <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Urlaubstage / Jahr</span>
               <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
                 {employee.vacation_days_per_year} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)' }}>Tage</span>
+              </div>
+            </div>
+            <div>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Monatskontingent</span>
+              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
+                {employee.monthly_hours && employee.monthly_hours > 0 ? `${employee.monthly_hours} Std.` : 'Kein Limit'}
+              </div>
+            </div>
+            <div>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Schutzprofil</span>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
+                {employee.shift_preferences?._protection_profile === 'youth'
+                  ? '🔞 JArbSchG (< 18 J.)'
+                  : employee.shift_preferences?._protection_profile === 'youth_hospitality'
+                  ? '🥐 JArbSchG (Gastro)'
+                  : employee.shift_preferences?._protection_profile === 'maternity'
+                  ? '🤰 Mutterschutz (MuSchG)'
+                  : '👤 Standard (ArbZG)'}
               </div>
             </div>
           </div>

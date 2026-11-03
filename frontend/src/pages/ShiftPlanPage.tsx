@@ -970,7 +970,20 @@ export default function ShiftPlanPage() {
                         maxWidth: 220,
                       }}
                     >
-                      <div>{getEmployeeName(emp)} {isOwnRow ? '(Ich)' : ''}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {getEmployeeName(emp)} {isOwnRow ? '(Ich)' : ''}
+                        </span>
+                        {emp.shift_preferences?._protection_profile === 'youth' && (
+                          <span title="JArbSchG (< 18 J.): Max. 8h/Tag, 12h Ruhezeit, 06–20 Uhr, So/Feiertag frei">🔞</span>
+                        )}
+                        {emp.shift_preferences?._protection_profile === 'youth_hospitality' && (
+                          <span title="JArbSchG Gastro (§ 14 Abs. 2): Max. 8h/Tag, 12h Ruhezeit, 05–22 Uhr, jeder 2. So frei">🥐</span>
+                        )}
+                        {emp.shift_preferences?._protection_profile === 'maternity' && (
+                          <span title="Mutterschutz (MuSchG): Max. 8,5h/Tag, 06–20 Uhr, mind. 11h Ruhezeit">🤰</span>
+                        )}
+                      </div>
                       <div style={{
                         fontSize: '0.72rem',
                         fontWeight: 500,

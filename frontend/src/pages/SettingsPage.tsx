@@ -9,6 +9,76 @@ const DEFAULT_BREAK_RULES: BreakRule[] = [
   { from_hours: 9, break_minutes: 45 },
 ];
 
+interface IndustryPresetDef {
+  id: string;
+  label: string;
+  lawRef: string;
+  desc: string;
+  maxDaily: number;
+  minRest: number;
+  maxWeekly: number;
+  maxConsecutiveDays: number;
+  maxConsecutiveNights: number;
+}
+
+const INDUSTRY_PRESETS: IndustryPresetDef[] = [
+  {
+    id: 'standard',
+    label: '🏢 Standard (Büro & Gewerbe)',
+    lawRef: '§§ 3, 5 ArbZG',
+    desc: 'Reguläres Arbeitszeitgesetz: max. 10h/Tag, mind. 11h Ruhezeit, max. 6 Tage am Stück.',
+    maxDaily: 10,
+    minRest: 11,
+    maxWeekly: 48,
+    maxConsecutiveDays: 6,
+    maxConsecutiveNights: 4,
+  },
+  {
+    id: 'gastronomy',
+    label: '🍽️ Gastronomie & Hotellerie',
+    lawRef: '§ 5 Abs. 2 ArbZG',
+    desc: 'Branchenausnahme Gastgewerbe: Verkürzte Ruhezeit von 10h zulässig (Ausgleich innerhalb von 4 Wochen).',
+    maxDaily: 10,
+    minRest: 10,
+    maxWeekly: 48,
+    maxConsecutiveDays: 6,
+    maxConsecutiveNights: 4,
+  },
+  {
+    id: 'healthcare',
+    label: '🏥 Pflege, Klinik & Betreuung',
+    lawRef: '§ 5 Abs. 2 ArbZG',
+    desc: 'Branchenausnahme Pflege/Krankenhaus: Verkürzte Ruhezeit von 10h bei Schichtwechsel sowie max. 4 Nachtdienste in Folge.',
+    maxDaily: 10,
+    minRest: 10,
+    maxWeekly: 48,
+    maxConsecutiveDays: 6,
+    maxConsecutiveNights: 4,
+  },
+  {
+    id: 'retail',
+    label: '🛒 Einzelhandel & Verkauf',
+    lawRef: '§§ 3, 5 ArbZG',
+    desc: 'Einzelhandel/Bäckerei: 11h Ruhezeit, max. 10h/Tag, max. 6 Werkstage am Stück.',
+    maxDaily: 10,
+    minRest: 11,
+    maxWeekly: 48,
+    maxConsecutiveDays: 6,
+    maxConsecutiveNights: 4,
+  },
+  {
+    id: 'emergency',
+    label: '🚑 Rettungsdienst / Bereitschaft',
+    lawRef: '§ 7 ArbZG',
+    desc: 'Tarifliche Arbeitsbereitschaft: Bis zu 12h Tagesarbeitszeit, max. 5 Schichten am Stück.',
+    maxDaily: 12,
+    minRest: 11,
+    maxWeekly: 48,
+    maxConsecutiveDays: 5,
+    maxConsecutiveNights: 4,
+  },
+];
+
 export default function SettingsPage() {
   const { t: _t } = useTranslation();
   const { isAdmin } = useAuth();
@@ -24,9 +94,12 @@ export default function SettingsPage() {
   const [nameSuccess, setNameSuccess] = useState(false);
 
   // Work time settings
+  const [industryPreset, setIndustryPreset] = useState<string>('standard');
   const [maxDailyHours, setMaxDailyHours] = useState(10);
   const [minRestHours, setMinRestHours] = useState(11);
   const [maxWeeklyHours, setMaxWeeklyHours] = useState(48);
+  const [maxConsecutiveDays, setMaxConsecutiveDays] = useState(6);
+  const [maxConsecutiveNightShifts, setMaxConsecutiveNightShifts] = useState(4);
 
   // Break rules
   const [breakRules, setBreakRules] = useState<BreakRule[]>(DEFAULT_BREAK_RULES);
@@ -132,9 +205,12 @@ export default function SettingsPage() {
       setName(data.name);
 
       const s = data.settings || {};
+      setIndustryPreset(s.industry_preset ?? 'standard');
       setMaxDailyHours(s.max_daily_hours ?? 10);
       setMinRestHours(s.min_rest_hours ?? 11);
       setMaxWeeklyHours(s.max_weekly_hours ?? 48);
+      setMaxConsecutiveDays(s.max_consecutive_days ?? 6);
+      setMaxConsecutiveNightShifts(s.max_consecutive_night_shifts ?? 4);
       setBreakRules(s.break_rules && s.break_rules.length > 0 ? s.break_rules : DEFAULT_BREAK_RULES);
     } catch (err) {
       setError('Fehler beim Laden der Einstellungen.');
@@ -169,9 +245,12 @@ export default function SettingsPage() {
       setSettingsError(null);
 
       const settings: TenantSettings = {
+        industry_preset: industryPreset,
         max_daily_hours: maxDailyHours,
         min_rest_hours: minRestHours,
         max_weekly_hours: maxWeeklyHours,
+        max_consecutive_days: maxConsecutiveDays,
+        max_consecutive_night_shifts: maxConsecutiveNightShifts,
         break_rules: breakRules.filter((r) => r.from_hours > 0 && r.break_minutes > 0),
       };
 
@@ -461,17 +540,74 @@ export default function SettingsPage() {
           fontSize: '1.2rem',
           fontWeight: 600,
           color: 'var(--text-primary)',
-          marginBottom: 'var(--space-lg)',
+          marginBottom: 'var(--space-sm)',
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--space-sm)',
         }}>
-          ⚖️ Arbeitszeitregelungen
+          ⚖️ Arbeitszeitregelungen & Branchen-Ausnahmen (ArbZG)
         </h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', marginBottom: 'var(--space-md)' }}>
+          Wähle eine gesetzliche Branchen-Vorlage oder passe die Grenzwerte für den automatischen Scheduler und die Konfliktprüfung individuell an.
+        </p>
+
+        {/* Branchen-Presets */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gap: 10,
+          marginBottom: 'var(--space-lg)',
+        }}>
+          {INDUSTRY_PRESETS.map((preset) => {
+            const active = industryPreset === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  setIndustryPreset(preset.id);
+                  setMaxDailyHours(preset.maxDaily);
+                  setMinRestHours(preset.minRest);
+                  setMaxWeeklyHours(preset.maxWeekly);
+                  setMaxConsecutiveDays(preset.maxConsecutiveDays);
+                  setMaxConsecutiveNightShifts(preset.maxConsecutiveNights);
+                }}
+                style={{
+                  textAlign: 'left',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: active ? '2px solid var(--accent)' : '1px solid var(--border-primary)',
+                  background: active ? 'rgba(99, 102, 241, 0.14)' : 'rgba(255, 255, 255, 0.02)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--text-primary)' }}>
+                    {preset.label}
+                  </span>
+                  <span style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 600,
+                    padding: '1px 6px',
+                    borderRadius: 999,
+                    background: 'rgba(148, 163, 184, 0.18)',
+                    color: 'var(--text-secondary)',
+                  }}>
+                    {preset.lawRef}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.35 }}>
+                  {preset.desc}
+                </div>
+              </button>
+            );
+          })}
+        </div>
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
           gap: 'var(--space-lg)',
         }}>
           <div className="form-group">
@@ -503,7 +639,7 @@ export default function SettingsPage() {
               color: 'var(--text-secondary)',
               marginBottom: 'var(--space-xs)',
             }}>
-              Min. Ruhezeit (Std.)
+              Min. Ruhezeit zwischen Schichten (Std.)
             </label>
             <input
               className="input"
@@ -536,6 +672,60 @@ export default function SettingsPage() {
               onChange={(e) => setMaxWeeklyHours(parseFloat(e.target.value) || 0)}
             />
           </div>
+
+          <div className="form-group">
+            <label style={{
+              display: 'block',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              color: 'var(--text-secondary)',
+              marginBottom: 'var(--space-xs)',
+            }}>
+              Max. Arbeitstage am Stück (§ 11 ArbZG)
+            </label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={14}
+              step={1}
+              value={maxConsecutiveDays}
+              onChange={(e) => setMaxConsecutiveDays(parseInt(e.target.value, 10) || 6)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label style={{
+              display: 'block',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              color: 'var(--text-secondary)',
+              marginBottom: 'var(--space-xs)',
+            }}>
+              Max. Nachtschichten in Folge (§ 6 ArbZG)
+            </label>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={14}
+              step={1}
+              value={maxConsecutiveNightShifts}
+              onChange={(e) => setMaxConsecutiveNightShifts(parseInt(e.target.value, 10) || 4)}
+            />
+          </div>
+        </div>
+
+        <div style={{
+          marginTop: 'var(--space-md)',
+          padding: '10px 14px',
+          borderRadius: 'var(--radius-md)',
+          background: 'rgba(16, 185, 129, 0.08)',
+          border: '1px solid rgba(16, 185, 129, 0.25)',
+          fontSize: '0.8rem',
+          color: 'var(--text-secondary)',
+        }}>
+          🛡️ <strong>Hinweis zu besonderen Schutzgruppen (JArbSchG, MuSchG & Minijob):</strong> Für <strong>Jugendliche unter 18 Jahren</strong> (12h Ruhezeit, max. 8h/Tag, 5-Tage-Woche, Nachtarbeitsverbot, erhöhte Pausen), <strong>Schwangere/Stillende (Mutterschutz)</strong> sowie <strong>Minijob-Monatskontingente</strong> kannst du das entsprechende Schutzprofil direkt im jeweiligen <strong>Mitarbeiterprofil</strong> hinterlegen. Der Auto-Scheduler berücksichtigt diese Schutzgesetze automatisch vorrangig.
         </div>
       </div>
 

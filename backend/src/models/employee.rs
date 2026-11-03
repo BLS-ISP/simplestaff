@@ -92,6 +92,36 @@ pub fn is_owned_by_user(emp: &Model, user_model: &super::user::Model) -> bool {
         .unwrap_or(false)
 }
 
+/// Returns the labor law protection profile stored in `emp.shift_preferences["_protection_profile"]`.
+/// Possible values:
+/// - `"standard"` (Volljährig, reguläres ArbZG)
+/// - `"youth"` (Jugendlicher < 18 J. nach JArbSchG)
+/// - `"youth_hospitality"` (Jugendlicher >= 16 J. Gastro/Hotellerie/Bäckerei nach § 14 Abs. 2 JArbSchG)
+/// - `"maternity"` (Schwangere/Stillende nach MuSchG)
+pub fn get_protection_profile(emp: &Model) -> &str {
+    emp.shift_preferences
+        .get("_protection_profile")
+        .and_then(|v| v.as_str())
+        .filter(|s| matches!(*s, "standard" | "youth" | "youth_hospitality" | "maternity"))
+        .unwrap_or("standard")
+}
+
+/// Safely extracts the numeric shift preference (1..=5, default 3) for a given shift type and weekday (1=Mon..7=Sun),
+/// ignoring non-numeric metadata keys such as `"_protection_profile"`.
+pub fn get_shift_pref(emp: &Model, shift_type_id: &Uuid, day_of_week: u32) -> i32 {
+    let pref_key = format!("{}:{}", shift_type_id, day_of_week);
+    emp.shift_preferences
+        .get(&pref_key)
+        .and_then(|v| v.as_i64())
+        .or_else(|| {
+            emp.shift_preferences
+                .get(&shift_type_id.to_string())
+                .and_then(|v| v.as_i64())
+        })
+        .map(|n| n as i32)
+        .unwrap_or(3)
+}
+
 /// Finds the employee profile linked to `user_model` within `tenant_id`.
 /// Prioritizes `employees.user_id = user_model.id`, falling back to case-insensitive email match.
 pub async fn find_for_user(

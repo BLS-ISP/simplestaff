@@ -50,6 +50,7 @@ pub struct CreateEmployeeRequest {
     pub vacation_days_per_year: Option<i32>,
     pub vacation_days_remaining: Option<f32>,
     pub shift_preferences: Option<serde_json::Value>,
+    pub protection_profile: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -70,6 +71,7 @@ pub struct UpdateEmployeeRequest {
     pub vacation_days_per_year: Option<i32>,
     pub vacation_days_remaining: Option<f32>,
     pub shift_preferences: Option<serde_json::Value>,
+    pub protection_profile: Option<String>,
     pub is_active: Option<bool>,
 }
 
@@ -319,6 +321,17 @@ async fn create_employee(
 
             let vac_per_year = body.vacation_days_per_year.unwrap_or(30);
             let vac_remaining = body.vacation_days_remaining.unwrap_or(vac_per_year as f32);
+            let mut shift_prefs = body.shift_preferences.unwrap_or_else(|| serde_json::json!({}));
+            if !shift_prefs.is_object() {
+                shift_prefs = serde_json::json!({});
+            }
+            if let Some(ref prof) = body.protection_profile {
+                let trimmed = prof.trim();
+                if matches!(trimmed, "standard" | "youth" | "youth_hospitality" | "maternity") {
+                    shift_prefs["_protection_profile"] = serde_json::Value::String(trimmed.to_string());
+                }
+            }
+            let monthly_hours_opt = body.monthly_hours.filter(|&v| v > 0.0);
             let active_model = ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tenant_id: Set(tenant_id),
@@ -328,11 +341,11 @@ async fn create_employee(
                 email: Set(body.email),
                 phone: Set(body.phone),
                 weekly_hours: Set(body.weekly_hours.unwrap_or(40.0)),
-                monthly_hours: Set(body.monthly_hours),
+                monthly_hours: Set(monthly_hours_opt),
                 yearly_hours: Set(body.yearly_hours),
                 vacation_days_per_year: Set(vac_per_year),
                 vacation_days_remaining: Set(vac_remaining),
-                shift_preferences: Set(body.shift_preferences.unwrap_or_else(|| serde_json::json!({}))),
+                shift_preferences: Set(shift_prefs),
                 is_active: Set(true),
                 created_at: Set(now),
                 updated_at: Set(now),
@@ -514,6 +527,7 @@ async fn update_employee(
             let linked_user_opt = find_user_for_employee(txn, tenant_id, &existing).await?;
             let old_vac_per_year = existing.vacation_days_per_year;
             let old_vac_remaining = existing.vacation_days_remaining;
+            let existing_prefs = existing.shift_preferences.clone();
             let mut active_model: ActiveModel = existing.into();
 
             if let Some(ref v) = body.first_name {
@@ -532,7 +546,11 @@ async fn update_employee(
                 active_model.weekly_hours = Set(v);
             }
             if let Some(v) = body.monthly_hours {
-                active_model.monthly_hours = Set(Some(v));
+                if v <= 0.0 {
+                    active_model.monthly_hours = Set(None);
+                } else {
+                    active_model.monthly_hours = Set(Some(v));
+                }
             }
             if let Some(v) = body.yearly_hours {
                 active_model.yearly_hours = Set(Some(v));
@@ -547,8 +565,28 @@ async fn update_employee(
             if let Some(v) = body.vacation_days_remaining {
                 active_model.vacation_days_remaining = Set(v.max(0.0));
             }
-            if let Some(v) = body.shift_preferences {
-                active_model.shift_preferences = Set(v);
+            if body.shift_preferences.is_some() || body.protection_profile.is_some() {
+                let mut merged_prefs = body.shift_preferences.unwrap_or_else(|| existing_prefs.clone());
+                if !merged_prefs.is_object() {
+                    merged_prefs = serde_json::json!({});
+                }
+                // Preserve existing underscore metadata keys if not explicitly replaced
+                if let Some(existing_obj) = existing_prefs.as_object() {
+                    if let Some(new_obj) = merged_prefs.as_object_mut() {
+                        for (k, val) in existing_obj {
+                            if k.starts_with('_') && !new_obj.contains_key(k) {
+                                new_obj.insert(k.clone(), val.clone());
+                            }
+                        }
+                    }
+                }
+                if let Some(ref prof) = body.protection_profile {
+                    let trimmed = prof.trim();
+                    if matches!(trimmed, "standard" | "youth" | "youth_hospitality" | "maternity") {
+                        merged_prefs["_protection_profile"] = serde_json::Value::String(trimmed.to_string());
+                    }
+                }
+                active_model.shift_preferences = Set(merged_prefs);
             }
             if let Some(v) = body.is_active {
                 active_model.is_active = Set(v);
@@ -724,8 +762,24 @@ async fn update_my_preferences(
                 .await?
                 .ok_or_else(|| AppError::NotFound("Zu diesem Benutzer wurde kein Mitarbeiterprofil gefunden.".to_string()))?;
 
+            let existing_prefs = emp_model.shift_preferences.clone();
+            let mut new_prefs = body.shift_preferences;
+            if !new_prefs.is_object() {
+                new_prefs = serde_json::json!({});
+            }
+            // Preserve protected metadata keys (e.g. _protection_profile) so employees cannot alter them
+            if let Some(existing_obj) = existing_prefs.as_object() {
+                if let Some(new_obj) = new_prefs.as_object_mut() {
+                    for (k, val) in existing_obj {
+                        if k.starts_with('_') {
+                            new_obj.insert(k.clone(), val.clone());
+                        }
+                    }
+                }
+            }
+
             let mut active: ActiveModel = emp_model.into();
-            active.shift_preferences = Set(body.shift_preferences);
+            active.shift_preferences = Set(new_prefs);
             active.updated_at = Set(now);
             let res = active.update(txn).await?;
             Ok(res)

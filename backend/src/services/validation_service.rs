@@ -90,12 +90,8 @@ pub async fn validate_assignment(
         .await?
         .ok_or_else(|| AppError::NotFound("Employee not found".to_string()))?;
 
-    let prefs_map: std::collections::HashMap<String, i32> = serde_json::from_value(emp.shift_preferences.clone())
-        .unwrap_or_default();
-    let pref_key = format!("{}:{}", shift_type_id, day_of_week);
-    let pref = prefs_map.get(&pref_key).copied()
-        .or_else(|| prefs_map.get(&shift_type_id.to_string()).copied())
-        .unwrap_or(3);
+    let protection_profile = employee::get_protection_profile(&emp);
+    let pref = employee::get_shift_pref(&emp, shift_type_id, day_of_week);
 
     if pref == 1 {
         let weekday_name_de = match day_of_week {
@@ -133,11 +129,12 @@ pub async fn validate_assignment(
         });
     }
 
-    // ── 3. 11-hour rest period violation (previous day & next day) ────────
-    let min_rest_hours = tenant_settings
+    // ── 3. Rest period violation (previous day & next day) ────────────────
+    let tenant_min_rest_hours = tenant_settings
         .get("min_rest_hours")
         .and_then(|v| v.as_f64())
         .unwrap_or(11.0);
+    let min_rest_hours = effective_min_rest_hours(tenant_min_rest_hours, protection_profile);
 
     let previous_day = *assignment_date - Duration::days(1);
     let next_day = *assignment_date + Duration::days(1);
@@ -253,10 +250,11 @@ pub async fn validate_assignment(
     }
 
     // ── 4. Max daily hours exceeded & same-day shift overlap ──────────────
-    let max_daily_hours = tenant_settings
+    let tenant_max_daily_hours = tenant_settings
         .get("max_daily_hours")
         .and_then(|v| v.as_f64())
         .unwrap_or(10.0);
+    let max_daily_hours = effective_max_daily_hours(tenant_max_daily_hours, protection_profile);
 
     let same_day_assignments = shift_assignment::Entity::find()
         .filter(
@@ -279,22 +277,22 @@ pub async fn validate_assignment(
             .await?
             .ok_or_else(|| AppError::NotFound("Shift type not found".to_string()))?;
 
-        total_daily_hours += calculate_shift_duration(&st, tenant_settings);
+        total_daily_hours += calculate_shift_duration_for_employee(&st, tenant_settings, protection_profile);
     }
 
     // Add the proposed shift's duration
-    let new_shift_duration = calculate_shift_duration(&shift_type, tenant_settings);
+    let new_shift_duration = calculate_shift_duration_for_employee(&shift_type, tenant_settings, protection_profile);
     total_daily_hours += new_shift_duration;
 
     if total_daily_hours > max_daily_hours {
         warnings.push(ValidationWarning {
             code: "MAX_DAILY_HOURS".to_string(),
             message_de: format!(
-                "Tägliche Arbeitszeit von {:.1}h überschreitet das Maximum von {:.0}h.",
+                "Tägliche Arbeitszeit von {:.1}h überschreitet das Maximum von {:.1}h.",
                 total_daily_hours, max_daily_hours
             ),
             message_en: format!(
-                "Daily working hours of {:.1}h exceed the maximum of {:.0}h.",
+                "Daily working hours of {:.1}h exceed the maximum of {:.1}h.",
                 total_daily_hours, max_daily_hours
             ),
             severity: WarningSeverity::Warning,
@@ -302,21 +300,15 @@ pub async fn validate_assignment(
     }
 
     // ── 5. Weekly hours exceeded ──────────────────────────────────────────
-    let employee_record = employee::Entity::find()
-        .filter(employee::Column::Id.eq(*employee_id))
-        .filter(employee::Column::TenantId.eq(*tenant_id))
-        .one(txn)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Employee not found".to_string()))?;
-
-    let emp_weekly_hours = employee_record.weekly_hours as f64;
+    let emp_weekly_hours = emp.weekly_hours as f64;
     let tenant_max_weekly_hours = tenant_settings
         .get("max_weekly_hours")
         .and_then(|v| v.as_f64());
-    let weekly_hours_limit = match tenant_max_weekly_hours {
-        Some(t_max) => emp_weekly_hours.min(t_max),
-        None => emp_weekly_hours,
-    };
+    let weekly_hours_limit = effective_max_weekly_hours(
+        emp_weekly_hours,
+        tenant_max_weekly_hours,
+        protection_profile,
+    );
 
     // Calculate Monday–Sunday of the assignment week
     let weekday = assignment_date.weekday().num_days_from_monday(); // Mon=0 .. Sun=6
@@ -345,7 +337,7 @@ pub async fn validate_assignment(
             .await?
             .ok_or_else(|| AppError::NotFound("Shift type not found".to_string()))?;
 
-        total_weekly_hours += calculate_shift_duration(&st, tenant_settings);
+        total_weekly_hours += calculate_shift_duration_for_employee(&st, tenant_settings, protection_profile);
     }
 
     // Add the proposed shift
@@ -364,6 +356,51 @@ pub async fn validate_assignment(
             ),
             severity: WarningSeverity::Warning,
         });
+    }
+
+    // ── 5b. Monthly hours exceeded (Minijob / Vertragskontingent) ─────────
+    if let Some(monthly_max) = emp.monthly_hours.filter(|&m| m > 0.0) {
+        let (month_start, month_end) = month_bounds(*assignment_date);
+        let monthly_assignments = shift_assignment::Entity::find()
+            .filter(
+                Condition::all()
+                    .add(shift_assignment::Column::TenantId.eq(*tenant_id))
+                    .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
+                    .add(shift_assignment::Column::AssignmentDate.gte(month_start))
+                    .add(shift_assignment::Column::AssignmentDate.lte(month_end))
+                    .add(shift_assignment::Column::Status.ne("sick")),
+            )
+            .all(txn)
+            .await?;
+
+        let mut total_monthly_hours: f64 = 0.0;
+        for assignment in &monthly_assignments {
+            let st = shift_type::Entity::find()
+                .filter(shift_type::Column::Id.eq(assignment.shift_type_id))
+                .filter(shift_type::Column::TenantId.eq(*tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Shift type not found".to_string()))?;
+
+            total_monthly_hours += calculate_shift_duration_for_employee(&st, tenant_settings, protection_profile);
+        }
+
+        total_monthly_hours += new_shift_duration;
+
+        if total_monthly_hours > monthly_max as f64 {
+            warnings.push(ValidationWarning {
+                code: "MONTHLY_HOURS_EXCEEDED".to_string(),
+                message_de: format!(
+                    "Monatliche Arbeitszeit von {:.1}h überschreitet das Monatskontingent / Minijob-Limit von {:.1}h.",
+                    total_monthly_hours, monthly_max
+                ),
+                message_en: format!(
+                    "Monthly working hours of {:.1}h exceed the monthly / mini-job limit of {:.1}h.",
+                    total_monthly_hours, monthly_max
+                ),
+                severity: WarningSeverity::Warning,
+            });
+        }
     }
 
     // ── 6. Weekday validity check ─────────────────────────────────────────
@@ -559,7 +596,285 @@ pub async fn validate_assignment(
         }
     }
 
+    // ── 9. Max consecutive working days (§ 11 Abs. 3 ArbZG / § 15 JArbSchG) ──
+    let tenant_max_consec = tenant_settings
+        .get("max_consecutive_days")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(6) as u32;
+    let max_consecutive_days = effective_max_consecutive_days(tenant_max_consec, protection_profile);
+
+    let streak_window_start = *assignment_date - Duration::days(14);
+    let streak_window_end = *assignment_date + Duration::days(14);
+
+    let window_assignments = shift_assignment::Entity::find()
+        .filter(
+            Condition::all()
+                .add(shift_assignment::Column::TenantId.eq(*tenant_id))
+                .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
+                .add(shift_assignment::Column::AssignmentDate.gte(streak_window_start))
+                .add(shift_assignment::Column::AssignmentDate.lte(streak_window_end))
+                .add(shift_assignment::Column::Status.ne("sick")),
+        )
+        .all(txn)
+        .await?;
+
+    let worked_dates: std::collections::HashSet<NaiveDate> = window_assignments
+        .iter()
+        .map(|a| a.assignment_date)
+        .collect();
+
+    let mut before_streak: u32 = 0;
+    let mut check_d = *assignment_date - Duration::days(1);
+    while worked_dates.contains(&check_d) {
+        before_streak += 1;
+        check_d -= Duration::days(1);
+    }
+
+    let mut after_streak: u32 = 0;
+    let mut check_d_after = *assignment_date + Duration::days(1);
+    while worked_dates.contains(&check_d_after) {
+        after_streak += 1;
+        check_d_after += Duration::days(1);
+    }
+
+    let total_consecutive_days = before_streak + 1 + after_streak;
+    if total_consecutive_days > max_consecutive_days {
+        warnings.push(ValidationWarning {
+            code: "MAX_CONSECUTIVE_DAYS_EXCEEDED".to_string(),
+            message_de: format!(
+                "{} Arbeitstage am Stück überschreiten das zulässige Maximum von {} Tagen ohne Ruhetag.",
+                total_consecutive_days, max_consecutive_days
+            ),
+            message_en: format!(
+                "{} consecutive working days exceed the maximum of {} days without a rest day.",
+                total_consecutive_days, max_consecutive_days
+            ),
+            severity: WarningSeverity::Warning,
+        });
+    }
+
+    // ── 10. Max consecutive night shifts (§ 6 Abs. 1 ArbZG) ───────────────
+    if is_night_shift(shift_type.start_time, shift_type.end_time) {
+        let max_consecutive_nights = tenant_settings
+            .get("max_consecutive_night_shifts")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(4) as u32;
+
+        // Determine which dates in window_assignments have a night shift
+        let all_tenant_shifts = shift_type::Entity::find()
+            .filter(shift_type::Column::TenantId.eq(*tenant_id))
+            .all(txn)
+            .await?;
+        let night_shift_ids: std::collections::HashSet<Uuid> = all_tenant_shifts
+            .into_iter()
+            .filter(|st| is_night_shift(st.start_time, st.end_time))
+            .map(|st| st.id)
+            .collect();
+
+        let night_dates: std::collections::HashSet<NaiveDate> = window_assignments
+            .iter()
+            .filter(|a| night_shift_ids.contains(&a.shift_type_id))
+            .map(|a| a.assignment_date)
+            .collect();
+
+        let mut night_before = 0u32;
+        let mut d_prev = *assignment_date - Duration::days(1);
+        while night_dates.contains(&d_prev) {
+            night_before += 1;
+            d_prev -= Duration::days(1);
+        }
+
+        let mut night_after = 0u32;
+        let mut d_next = *assignment_date + Duration::days(1);
+        while night_dates.contains(&d_next) {
+            night_after += 1;
+            d_next += Duration::days(1);
+        }
+
+        let total_night_streak = night_before + 1 + night_after;
+        if total_night_streak > max_consecutive_nights {
+            warnings.push(ValidationWarning {
+                code: "MAX_CONSECUTIVE_NIGHT_SHIFTS".to_string(),
+                message_de: format!(
+                    "{} Nachtschichten in Folge überschreiten das Limit von {} Nachtschichten (§ 6 ArbZG).",
+                    total_night_streak, max_consecutive_nights
+                ),
+                message_en: format!(
+                    "{} consecutive night shifts exceed the limit of {} night shifts (§ 6 ArbZG).",
+                    total_night_streak, max_consecutive_nights
+                ),
+                severity: WarningSeverity::Warning,
+            });
+        }
+    }
+
+    // ── 11. Youth (JArbSchG) & Maternity (MuSchG) statutory protections ───
+    if let Some((allowed_window, law_ref)) =
+        violates_protected_time_window(shift_type.start_time, shift_type.end_time, protection_profile)
+    {
+        warnings.push(ValidationWarning {
+            code: "PROTECTED_NIGHT_WORK_PROHIBITION".to_string(),
+            message_de: format!(
+                "Beschäftigungsverbot ({}): Schicht ({}–{}) liegt außerhalb des zulässigen Zeitfensters ({} Uhr).",
+                law_ref,
+                shift_type.start_time.format("%H:%M"),
+                shift_type.end_time.format("%H:%M"),
+                allowed_window
+            ),
+            message_en: format!(
+                "Night work prohibition ({}): Shift ({}–{}) is outside the permitted time window ({}).",
+                law_ref,
+                shift_type.start_time.format("%H:%M"),
+                shift_type.end_time.format("%H:%M"),
+                allowed_window
+            ),
+            severity: WarningSeverity::Critical,
+        });
+    }
+
+    if protection_profile == "youth" && (weekday == 7 || is_holiday) {
+        warnings.push(ValidationWarning {
+            code: "YOUTH_SUNDAY_HOLIDAY_REST".to_string(),
+            message_de: "Sonn- und Feiertagsarbeitsverbot für Jugendliche unter 18 Jahren (§§ 17, 18 JArbSchG).".to_string(),
+            message_en: "Sunday and public holiday work prohibition for youths under 18 (§§ 17, 18 JArbSchG).".to_string(),
+            severity: WarningSeverity::Critical,
+        });
+    } else if protection_profile == "youth_hospitality" && weekday == 7 {
+        let prev_sunday = *assignment_date - Duration::days(7);
+        let next_sunday = *assignment_date + Duration::days(7);
+        if worked_dates.contains(&prev_sunday) || worked_dates.contains(&next_sunday) {
+            warnings.push(ValidationWarning {
+                code: "YOUTH_SUNDAY_HOLIDAY_REST".to_string(),
+                message_de: "Verstoß gegen § 17 Abs. 2 JArbSchG: Im Gastgewerbe muss für Jugendliche mindestens jeder zweite Sonntag beschäftigungsfrei bleiben.".to_string(),
+                message_en: "Violation of § 17(2) JArbSchG: For youth in hospitality, at least every second Sunday must be free of work.".to_string(),
+                severity: WarningSeverity::Critical,
+            });
+        }
+    }
+
     Ok(warnings)
+}
+
+/// Calculates the first and last day of the calendar month for `date`.
+pub fn month_bounds(date: NaiveDate) -> (NaiveDate, NaiveDate) {
+    let first = NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap_or(date);
+    let next_month_first = if date.month() == 12 {
+        NaiveDate::from_ymd_opt(date.year() + 1, 1, 1).unwrap_or(date)
+    } else {
+        NaiveDate::from_ymd_opt(date.year(), date.month() + 1, 1).unwrap_or(date)
+    };
+    let last = next_month_first - Duration::days(1);
+    (first, last)
+}
+
+/// Effective minimum rest period in hours, accounting for JArbSchG (12h) and MuSchG (11h).
+pub fn effective_min_rest_hours(tenant_min_rest: f64, protection_profile: &str) -> f64 {
+    match protection_profile {
+        "youth" | "youth_hospitality" => tenant_min_rest.max(12.0),
+        "maternity" => tenant_min_rest.max(11.0),
+        _ => tenant_min_rest,
+    }
+}
+
+/// Effective maximum daily working hours, accounting for JArbSchG (8.0h) and MuSchG (8.5h).
+pub fn effective_max_daily_hours(tenant_max_daily: f64, protection_profile: &str) -> f64 {
+    match protection_profile {
+        "youth" | "youth_hospitality" => tenant_max_daily.min(8.0),
+        "maternity" => tenant_max_daily.min(8.5),
+        _ => tenant_max_daily,
+    }
+}
+
+/// Effective maximum weekly working hours, accounting for JArbSchG (40.0h) and MuSchG (40.0h).
+pub fn effective_max_weekly_hours(
+    emp_weekly: f64,
+    tenant_max_weekly: Option<f64>,
+    protection_profile: &str,
+) -> f64 {
+    let base = match tenant_max_weekly {
+        Some(t_max) => emp_weekly.min(t_max),
+        None => emp_weekly,
+    };
+    match protection_profile {
+        "youth" | "youth_hospitality" | "maternity" => base.min(40.0),
+        _ => base,
+    }
+}
+
+/// Effective maximum consecutive working days, accounting for § 15 JArbSchG (5-Tage-Woche).
+pub fn effective_max_consecutive_days(tenant_max_consecutive: u32, protection_profile: &str) -> u32 {
+    match protection_profile {
+        "youth" | "youth_hospitality" => tenant_max_consecutive.min(5),
+        "maternity" => tenant_max_consecutive.min(6),
+        _ => tenant_max_consecutive,
+    }
+}
+
+/// Checks if a shift qualifies as a night shift under § 2 Abs. 3 & 4 ArbZG
+/// (either crosses midnight or includes more than 2 hours in the 23:00–06:00 window).
+pub fn is_night_shift(start: NaiveTime, end: NaiveTime) -> bool {
+    if end < start {
+        return true;
+    }
+    night_minutes_23_to_06(start, end) > 120
+}
+
+/// Returns the number of minutes of `[start, end]` falling into the 23:00–06:00 night window.
+pub fn night_minutes_23_to_06(start: NaiveTime, end: NaiveTime) -> i64 {
+    let s = minutes_from_midnight_to_time(start);
+    let e_raw = minutes_from_midnight_to_time(end);
+    let e = if e_raw < s { e_raw + 1440 } else { e_raw };
+
+    let windows = [(0i64, 360i64), (1380i64, 1800i64), (2820i64, 2880i64)];
+    let mut overlap = 0i64;
+    for (w_start, w_end) in windows {
+        let lo = s.max(w_start);
+        let hi = e.min(w_end);
+        if hi > lo {
+            overlap += hi - lo;
+        }
+    }
+    overlap
+}
+
+/// Checks whether `(start, end)` violates the statutory night work prohibition for
+/// youth (§ 14 JArbSchG) or maternity (§ 5 MuSchG) profiles.
+/// Returns `Some((allowed_window, law_reference))` when violated.
+pub fn violates_protected_time_window(
+    start: NaiveTime,
+    end: NaiveTime,
+    protection_profile: &str,
+) -> Option<(&'static str, &'static str)> {
+    match protection_profile {
+        "youth" => {
+            let min_start = NaiveTime::from_hms_opt(6, 0, 0).unwrap();
+            let max_end = NaiveTime::from_hms_opt(20, 0, 0).unwrap();
+            if end < start || start < min_start || end > max_end {
+                Some(("06:00–20:00", "§ 14 Abs. 1 JArbSchG"))
+            } else {
+                None
+            }
+        }
+        "youth_hospitality" => {
+            let min_start = NaiveTime::from_hms_opt(5, 0, 0).unwrap();
+            let max_end = NaiveTime::from_hms_opt(22, 0, 0).unwrap();
+            if end < start || start < min_start || end > max_end {
+                Some(("05:00–22:00", "§ 14 Abs. 2 JArbSchG"))
+            } else {
+                None
+            }
+        }
+        "maternity" => {
+            let min_start = NaiveTime::from_hms_opt(6, 0, 0).unwrap();
+            let max_end = NaiveTime::from_hms_opt(20, 0, 0).unwrap();
+            if end < start || start < min_start || end > max_end {
+                Some(("06:00–20:00", "§ 5 MuSchG"))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 /// Calculates the effective duration of a shift in hours, accounting for night shifts
@@ -567,6 +882,16 @@ pub async fn validate_assignment(
 pub fn calculate_shift_duration(
     shift: &shift_type::Model,
     tenant_settings: &serde_json::Value,
+) -> f64 {
+    calculate_shift_duration_for_employee(shift, tenant_settings, "standard")
+}
+
+/// Calculates the effective duration of a shift in hours for a specific employee protection profile,
+/// applying elevated statutory break rules under § 11 JArbSchG (4.5h -> 30m, >6h -> 60m) for youths.
+pub fn calculate_shift_duration_for_employee(
+    shift: &shift_type::Model,
+    tenant_settings: &serde_json::Value,
+    protection_profile: &str,
 ) -> f64 {
     let start = shift.start_time;
     let end = shift.end_time;
@@ -585,11 +910,23 @@ pub fn calculate_shift_duration(
 
     // Apply break rules from tenant settings, falling back to shift.break_minutes
     let rule_break_minutes = calculate_break_minutes(gross_hours, tenant_settings);
-    let break_minutes = if rule_break_minutes > 0 {
+    let mut break_minutes = if rule_break_minutes > 0 {
         rule_break_minutes
     } else {
         shift.break_minutes.max(0) as i64
     };
+
+    // § 11 JArbSchG: Jugendliche müssen ab 4,5h mind. 30 Min. und ab >6,0h mind. 60 Min. Pause erhalten
+    if matches!(protection_profile, "youth" | "youth_hospitality") {
+        let youth_break = if gross_hours > 6.0 {
+            60
+        } else if gross_hours >= 4.5 {
+            30
+        } else {
+            0
+        };
+        break_minutes = break_minutes.max(youth_break);
+    }
 
     (gross_hours - (break_minutes as f64 / 60.0)).max(0.0)
 }
@@ -694,5 +1031,80 @@ mod tests {
         let rest_hours = diff as f64 / 60.0;
 
         assert_eq!(rest_hours, 12.0); // 06:00 today to 18:00 today = 12 hours
+    }
+
+    #[test]
+    fn test_night_shift_detection_arbzg() {
+        let day_start = NaiveTime::from_hms_opt(8, 0, 0).unwrap();
+        let day_end = NaiveTime::from_hms_opt(16, 30, 0).unwrap();
+        assert!(!is_night_shift(day_start, day_end));
+
+        let late_start = NaiveTime::from_hms_opt(14, 0, 0).unwrap();
+        let late_end = NaiveTime::from_hms_opt(22, 30, 0).unwrap();
+        assert!(!is_night_shift(late_start, late_end));
+
+        // 04:00 to 12:00 includes 2.0h in 00:00-06:00 (not > 2h)
+        let early_start = NaiveTime::from_hms_opt(4, 0, 0).unwrap();
+        let early_end = NaiveTime::from_hms_opt(12, 0, 0).unwrap();
+        assert!(!is_night_shift(early_start, early_end));
+
+        // 03:30 to 11:30 includes 2.5h in 00:00-06:00 (> 2h -> night shift)
+        let very_early_start = NaiveTime::from_hms_opt(3, 30, 0).unwrap();
+        let very_early_end = NaiveTime::from_hms_opt(11, 30, 0).unwrap();
+        assert!(is_night_shift(very_early_start, very_early_end));
+
+        // Overnight shift 22:00 to 06:00
+        let night_start = NaiveTime::from_hms_opt(22, 0, 0).unwrap();
+        let night_end = NaiveTime::from_hms_opt(6, 0, 0).unwrap();
+        assert!(is_night_shift(night_start, night_end));
+    }
+
+    #[test]
+    fn test_protected_time_windows_jarbschg_and_muschg() {
+        let s_06 = NaiveTime::from_hms_opt(6, 0, 0).unwrap();
+        let e_14 = NaiveTime::from_hms_opt(14, 0, 0).unwrap();
+        let e_21 = NaiveTime::from_hms_opt(21, 0, 0).unwrap();
+        let e_23 = NaiveTime::from_hms_opt(23, 0, 0).unwrap();
+
+        assert!(violates_protected_time_window(s_06, e_14, "youth").is_none());
+        assert!(violates_protected_time_window(s_06, e_21, "youth").is_some());
+        assert!(violates_protected_time_window(s_06, e_21, "youth_hospitality").is_none());
+        assert!(violates_protected_time_window(s_06, e_23, "youth_hospitality").is_some());
+        assert!(violates_protected_time_window(s_06, e_21, "maternity").is_some());
+    }
+
+    #[test]
+    fn test_youth_break_rules_jarbschg() {
+        let now: chrono::DateTime<chrono::FixedOffset> = chrono::Utc::now().into();
+        let shift = shift_type::Model {
+            id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            name: "Tagesschicht".to_string(),
+            start_time: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            end_time: NaiveTime::from_hms_opt(15, 0, 0).unwrap(), // 7.0h gross
+            break_minutes: 30,
+            color: "#3b82f6".to_string(),
+            min_staff: Some(1),
+            max_staff: Some(3),
+            valid_days: serde_json::json!([1, 2, 3, 4, 5]),
+            holiday_mode: "all".to_string(),
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+        };
+        let settings = serde_json::json!({
+            "break_rules": [
+                { "from_hours": 6.0, "break_minutes": 30 },
+                { "from_hours": 9.0, "break_minutes": 45 }
+            ]
+        });
+
+        // Standard adult: 7.0h gross - 0.5h break = 6.5h net
+        assert_eq!(calculate_shift_duration(&shift, &settings), 6.5);
+        // Youth (<18, >6.0h gross -> 60m break under § 11 JArbSchG): 7.0h - 1.0h = 6.0h net
+        assert_eq!(
+            calculate_shift_duration_for_employee(&shift, &settings, "youth"),
+            6.0
+        );
     }
 }

@@ -7,6 +7,8 @@
 // Employee
 // ---------------------------------------------------------------------------
 
+export type ProtectionProfile = 'standard' | 'youth' | 'youth_hospitality' | 'maternity';
+
 export interface Employee {
   id: string;
   tenant_id: string;
@@ -20,7 +22,7 @@ export interface Employee {
   yearly_hours: number | null;
   vacation_days_per_year: number;
   vacation_days_remaining: number;
-  shift_preferences: Record<string, number>;
+  shift_preferences: Record<string, any>;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -37,7 +39,8 @@ export interface CreateEmployeeRequest {
   yearly_hours?: number;
   vacation_days_per_year?: number;
   vacation_days_remaining?: number;
-  shift_preferences?: Record<string, number>;
+  shift_preferences?: Record<string, any>;
+  protection_profile?: ProtectionProfile;
 }
 
 export interface UpdateEmployeeRequest {
@@ -50,7 +53,8 @@ export interface UpdateEmployeeRequest {
   yearly_hours?: number;
   vacation_days_per_year?: number;
   vacation_days_remaining?: number;
-  shift_preferences?: Record<string, number>;
+  shift_preferences?: Record<string, any>;
+  protection_profile?: ProtectionProfile;
   is_active?: boolean;
 }
 
@@ -182,9 +186,12 @@ export interface CreateVacationRequest {
 // ---------------------------------------------------------------------------
 
 export interface TenantSettings {
+  industry_preset?: string;
   max_daily_hours?: number;
   min_rest_hours?: number;
   max_weekly_hours?: number;
+  max_consecutive_days?: number;
+  max_consecutive_night_shifts?: number;
   break_rules?: BreakRule[];
   max_employees?: number | null;
   license_note?: string | null;
