@@ -42,6 +42,31 @@ export default function SettingsPage() {
   const [newClosedIsHoliday, setNewClosedIsHoliday] = useState(true);
   const [closedDaysLoading, setClosedDaysLoading] = useState(false);
   const [closedDaysError, setClosedDaysError] = useState<string | null>(null);
+  const [holidayYear, setHolidayYear] = useState<number>(new Date().getFullYear());
+  const [holidayState, setHolidayState] = useState<string>('NW');
+  const [holidayImporting, setHolidayImporting] = useState(false);
+  const [holidayImportMsg, setHolidayImportMsg] = useState<string | null>(null);
+
+  const handleImportHolidays = async () => {
+    try {
+      setHolidayImporting(true);
+      setClosedDaysError(null);
+      setHolidayImportMsg(null);
+      const res = await api.closedDays.generateHolidays({
+        year: holidayYear,
+        state: holidayState,
+      });
+      setHolidayImportMsg(
+        `${res.created_count} Feiertage importiert (${res.skipped_count} bereits vorhanden).`
+      );
+      await fetchClosedDays();
+      setTimeout(() => setHolidayImportMsg(null), 5000);
+    } catch (err) {
+      setClosedDaysError(err instanceof Error ? err.message : 'Fehler beim Importieren der Feiertage.');
+    } finally {
+      setHolidayImporting(false);
+    }
+  };
 
   const fetchClosedDays = async () => {
     try {
@@ -592,6 +617,74 @@ export default function SettingsPage() {
             ⚠️ {closedDaysError}
           </div>
         )}
+        {holidayImportMsg && (
+          <div style={{ color: 'var(--success)', fontSize: '0.9rem', marginBottom: 'var(--space-md)' }}>
+            ✅ {holidayImportMsg}
+          </div>
+        )}
+
+        {/* Automatic Holiday Generator */}
+        <div style={{
+          display: 'flex',
+          gap: 'var(--space-md)',
+          alignItems: 'flex-end',
+          flexWrap: 'wrap',
+          marginBottom: 'var(--space-md)',
+          background: 'rgba(99, 102, 241, 0.06)',
+          padding: 'var(--space-md)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid rgba(99, 102, 241, 0.25)',
+        }}>
+          <div style={{ flex: '2 1 220px' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 'var(--space-xs)' }}>
+              🇩🇪 Bundesland für Feiertags-Import
+            </label>
+            <select
+              className="input"
+              value={holidayState}
+              onChange={(e) => setHolidayState(e.target.value)}
+            >
+              <option value="BW">Baden-Württemberg (BW)</option>
+              <option value="BY">Bayern (BY)</option>
+              <option value="BE">Berlin (BE)</option>
+              <option value="BB">Brandenburg (BB)</option>
+              <option value="HB">Bremen (HB)</option>
+              <option value="HH">Hamburg (HH)</option>
+              <option value="HE">Hessen (HE)</option>
+              <option value="MV">Mecklenburg-Vorpommern (MV)</option>
+              <option value="NI">Niedersachsen (NI)</option>
+              <option value="NW">Nordrhein-Westfalen (NW)</option>
+              <option value="RP">Rheinland-Pfalz (RP)</option>
+              <option value="SL">Saarland (SL)</option>
+              <option value="SN">Sachsen (SN)</option>
+              <option value="ST">Sachsen-Anhalt (ST)</option>
+              <option value="SH">Schleswig-Holstein (SH)</option>
+              <option value="TH">Thüringen (TH)</option>
+            </select>
+          </div>
+          <div style={{ flex: '1 1 110px' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 'var(--space-xs)' }}>
+              Jahr
+            </label>
+            <input
+              type="number"
+              className="input"
+              min={2020}
+              max={2100}
+              value={holidayYear}
+              onChange={(e) => setHolidayYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
+            />
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ height: '42px' }}
+            onClick={handleImportHolidays}
+            disabled={holidayImporting}
+          >
+            {holidayImporting ? '⏳ Importiere…' : '✨ Gesetzliche Feiertage generieren'}
+          </button>
+        </div>
 
         {/* Add Closed Day Form */}
         <form onSubmit={handleAddClosedDay} style={{

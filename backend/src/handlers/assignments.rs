@@ -107,6 +107,8 @@ pub fn router() -> Router<AppState> {
         .route("/week/{date}", get(get_week))
         .route("/month/{date}", get(get_month))
         .route("/auto-schedule", axum::routing::post(auto_schedule))
+        .route("/copy-week", axum::routing::post(copy_week))
+        .route("/{id}/mark-sick", axum::routing::post(mark_sick))
         .route("/{id}", put(update_assignment).delete(delete_assignment))
 }
 
@@ -350,4 +352,226 @@ pub async fn auto_schedule(
         "success": true,
         "message": "Dienstplan wurde erfolgreich automatisch besetzt."
     })))
+}
+
+#[derive(Deserialize)]
+pub struct CopyWeekInput {
+    pub source_monday: NaiveDate,
+    pub target_monday: NaiveDate,
+}
+
+/// POST /copy-week — copies non-sick assignments from source week to target week,
+/// skipping closed days, approved vacations, blocked days, and already assigned employees.
+pub async fn copy_week(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Json(body): Json<CopyWeekInput>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    require_manager(&auth_user)?;
+
+    if body.source_monday == body.target_monday {
+        return Err(AppError::BadRequest(
+            "Quell- und Zielwoche dürfen nicht identisch sein.".to_string(),
+        ));
+    }
+
+    let tenant_id = auth_user.tenant_id;
+    let source_start = body.source_monday;
+    let source_end = source_start + Duration::days(6);
+    let target_start = body.target_monday;
+    let target_end = target_start + Duration::days(6);
+    let now = chrono::Utc::now().into();
+
+    let (copied_count, skipped_count) = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        Box::pin(async move {
+            let source_assignments = ShiftAssignment::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::AssignmentDate.gte(source_start))
+                .filter(Column::AssignmentDate.lte(source_end))
+                .filter(Column::Status.ne("sick"))
+                .all(txn)
+                .await?;
+
+            let target_assignments = ShiftAssignment::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::AssignmentDate.gte(target_start))
+                .filter(Column::AssignmentDate.lte(target_end))
+                .filter(Column::Status.ne("sick"))
+                .all(txn)
+                .await?;
+
+            let active_employees = crate::models::employee::Entity::find()
+                .filter(crate::models::employee::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::employee::Column::IsActive.eq(true))
+                .all(txn)
+                .await?;
+            let active_emp_ids: std::collections::HashSet<Uuid> =
+                active_employees.into_iter().map(|e| e.id).collect();
+
+            let vacations = crate::models::employee_vacation::Entity::find()
+                .filter(crate::models::employee_vacation::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::employee_vacation::Column::Status.eq("approved"))
+                .filter(crate::models::employee_vacation::Column::StartDate.lte(target_end))
+                .filter(crate::models::employee_vacation::Column::EndDate.gte(target_start))
+                .all(txn)
+                .await?;
+
+            let blocked_days = crate::models::employee_blocked_day::Entity::find()
+                .filter(crate::models::employee_blocked_day::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::employee_blocked_day::Column::BlockedDate.gte(target_start))
+                .filter(crate::models::employee_blocked_day::Column::BlockedDate.lte(target_end))
+                .all(txn)
+                .await?;
+
+            let closed_days = crate::models::closed_day::Entity::find()
+                .filter(crate::models::closed_day::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::closed_day::Column::ClosedDate.gte(target_start))
+                .filter(crate::models::closed_day::Column::ClosedDate.lte(target_end))
+                .all(txn)
+                .await?;
+
+            let mut existing_emp_dates: std::collections::HashSet<(Uuid, NaiveDate)> =
+                target_assignments
+                    .into_iter()
+                    .map(|a| (a.employee_id, a.assignment_date))
+                    .collect();
+
+            let mut copied = 0usize;
+            let mut skipped = 0usize;
+
+            for src in source_assignments {
+                let offset_days = (src.assignment_date - source_start).num_days();
+                let target_date = target_start + Duration::days(offset_days);
+
+                if !active_emp_ids.contains(&src.employee_id) {
+                    skipped += 1;
+                    continue;
+                }
+
+                let is_company_closed = closed_days
+                    .iter()
+                    .any(|cd| cd.closed_date == target_date && !cd.is_holiday);
+                if is_company_closed {
+                    skipped += 1;
+                    continue;
+                }
+
+                let on_vacation = vacations.iter().any(|v| {
+                    v.employee_id == src.employee_id
+                        && target_date >= v.start_date
+                        && target_date <= v.end_date
+                });
+                if on_vacation {
+                    skipped += 1;
+                    continue;
+                }
+
+                let is_blocked = blocked_days.iter().any(|b| {
+                    b.employee_id == src.employee_id && b.blocked_date == target_date
+                });
+                if is_blocked {
+                    skipped += 1;
+                    continue;
+                }
+
+                if existing_emp_dates.contains(&(src.employee_id, target_date)) {
+                    skipped += 1;
+                    continue;
+                }
+
+                let new_active = ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    tenant_id: Set(tenant_id),
+                    employee_id: Set(src.employee_id),
+                    shift_type_id: Set(src.shift_type_id),
+                    assignment_date: Set(target_date),
+                    actual_start: Set(None),
+                    actual_end: Set(None),
+                    actual_break_minutes: Set(None),
+                    status: Set("planned".to_string()),
+                    notes: Set(src.notes),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                };
+                new_active.insert(txn).await?;
+                existing_emp_dates.insert((src.employee_id, target_date));
+                copied += 1;
+            }
+
+            Ok((copied, skipped))
+        })
+    })
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "copied_count": copied_count,
+        "skipped_count": skipped_count,
+    })))
+}
+
+/// POST /:id/mark-sick — marks an assignment as `sick` and creates an open shift swap request.
+pub async fn mark_sick(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Path(id): Path<Uuid>,
+) -> Result<Json<shift_assignment::Model>, AppError> {
+    require_manager(&auth_user)?;
+
+    let tenant_id = auth_user.tenant_id;
+    let now = chrono::Utc::now().into();
+
+    let updated = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        Box::pin(async move {
+            let existing = ShiftAssignment::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Assignment {id} not found")))?;
+
+            let emp_id = existing.employee_id;
+            let current_notes = existing.notes.clone();
+
+            let mut active: ActiveModel = existing.into();
+            active.status = Set("sick".to_string());
+            if current_notes.as_deref().unwrap_or("").trim().is_empty() {
+                active.notes = Set(Some("Krankgemeldet".to_string()));
+            }
+            active.updated_at = Set(now);
+            let updated_model = active.update(txn).await?;
+
+            // Create an open shift_swap if none exists for this assignment
+            let existing_swap = crate::models::shift_swap::Entity::find()
+                .filter(crate::models::shift_swap::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::shift_swap::Column::AssignmentId.eq(id))
+                .filter(
+                    crate::models::shift_swap::Column::Status
+                        .is_in(["open", "proposed"]),
+                )
+                .one(txn)
+                .await?;
+
+            if existing_swap.is_none() {
+                let swap_model = crate::models::shift_swap::ActiveModel {
+                    id: Set(Uuid::new_v4()),
+                    tenant_id: Set(tenant_id),
+                    assignment_id: Set(id),
+                    requesting_employee_id: Set(emp_id),
+                    target_employee_id: Set(None),
+                    backup_employee_id: Set(None),
+                    status: Set("open".to_string()),
+                    notes: Set(Some("Krankmeldung – Vertretung gesucht".to_string())),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                };
+                swap_model.insert(txn).await?;
+            }
+
+            Ok(updated_model)
+        })
+    })
+    .await?;
+
+    Ok(Json(updated))
 }

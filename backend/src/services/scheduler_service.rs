@@ -137,8 +137,16 @@ pub async fn run_auto_schedule(
     // 5. Build in-memory assignments tracker (border assignments + preserved assignments inside range)
     let mut assignments: Vec<TempAssignment> = Vec::new();
     let mut deletable_assignment_ids: Vec<Uuid> = Vec::new();
+    let mut sick_emp_dates: std::collections::HashSet<(Uuid, NaiveDate)> = std::collections::HashSet::new();
 
     for ass in &all_range_assignments {
+        if ass.status == "sick" {
+            // Preserve sick records in DB, block that employee on that day,
+            // and do not count toward shift staffing so a replacement is scheduled.
+            sick_emp_dates.insert((ass.employee_id, ass.assignment_date));
+            continue;
+        }
+
         let in_target_range = ass.assignment_date >= start_date && ass.assignment_date <= end_date;
         let is_preserved = !in_target_range
             || ass.status != "planned"
@@ -247,8 +255,10 @@ pub async fn run_auto_schedule(
                     continue;
                 }
 
-                // Check double assignment
-                if is_assigned(emp.id, current_date, &assignments) {
+                // Check double assignment or sick leave on this day
+                if is_assigned(emp.id, current_date, &assignments)
+                    || sick_emp_dates.contains(&(emp.id, current_date))
+                {
                     continue;
                 }
 

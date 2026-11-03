@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
+import { api } from '../api/client';
 
 const navItems = [
   { path: '/dashboard', icon: '📊', labelKey: 'nav.dashboard', end: true },
@@ -24,16 +25,56 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [pwModalOpen, setPwModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwSuccess, setPwSuccess] = useState<string | null>(null);
 
   const currentLang = i18n.language;
   const userRole = user?.role || 'viewer';
 
   const filteredNavItems = navItems.filter((item) => {
     if (userRole === 'viewer') {
-      return ['/dashboard', '/vacations', '/shift-swaps', '/calendar'].includes(item.path);
+      return ['/dashboard', '/shift-plan', '/vacations', '/shift-swaps', '/calendar'].includes(item.path);
     }
     return true;
   });
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwError(null);
+    setPwSuccess(null);
+    if (newPassword.length < 8) {
+      setPwError('Das neue Passwort muss mindestens 8 Zeichen lang sein.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPwError('Die neuen Passwörter stimmen nicht überein.');
+      return;
+    }
+    try {
+      setPwLoading(true);
+      await api.auth.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
+      setPwSuccess('Passwort erfolgreich geändert!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        setPwModalOpen(false);
+        setPwSuccess(null);
+      }, 1500);
+    } catch (err) {
+      setPwError(err instanceof Error ? err.message : 'Passwortänderung fehlgeschlagen.');
+    } finally {
+      setPwLoading(false);
+    }
+  };
 
   const toggleLanguage = () => {
     const newLang = currentLang === 'de' ? 'en' : 'de';
@@ -129,12 +170,111 @@ export default function Layout() {
             </div>
           )}
 
+          <button
+            className="sidebar-logout-btn"
+            onClick={() => {
+              setPwError(null);
+              setPwSuccess(null);
+              setPwModalOpen(true);
+            }}
+            style={{ marginBottom: 4 }}
+          >
+            <span>🔑</span>
+            <span>Passwort ändern</span>
+          </button>
+
           <button className="sidebar-logout-btn" onClick={handleLogout}>
             <span>🚪</span>
             <span>{t('nav.logout')}</span>
           </button>
         </div>
       </aside>
+
+      {/* Password Change Modal */}
+      {pwModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => setPwModalOpen(false)}
+        >
+          <div
+            className="glass-card"
+            style={{ width: '100%', maxWidth: 420, padding: 24 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '1.15rem', color: 'var(--text-primary)' }}>
+              🔑 Eigenes Passwort ändern
+            </h3>
+            {pwError && (
+              <div style={{ padding: '10px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: '0.85rem' }}>
+                ⚠️ {pwError}
+              </div>
+            )}
+            {pwSuccess && (
+              <div style={{ padding: '10px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', color: '#10b981', fontSize: '0.85rem' }}>
+                ✅ {pwSuccess}
+              </div>
+            )}
+            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
+                  Aktuelles Passwort
+                </label>
+                <input
+                  type="password"
+                  className="input"
+                  required
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
+                  Neues Passwort (mind. 8 Zeichen)
+                </label>
+                <input
+                  type="password"
+                  className="input"
+                  required
+                  minLength={8}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
+                  Neues Passwort bestätigen
+                </label>
+                <input
+                  type="password"
+                  className="input"
+                  required
+                  minLength={8}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setPwModalOpen(false)}>
+                  Abbrechen
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={pwLoading}>
+                  {pwLoading ? 'Speichere...' : 'Passwort speichern'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="main-content">

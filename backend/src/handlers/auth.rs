@@ -70,6 +70,12 @@ pub struct MeResponse {
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -79,6 +85,7 @@ pub fn router() -> Router<AppState> {
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/me", get(me))
+        .route("/change-password", post(change_password))
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +96,12 @@ pub async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
 ) -> Result<Json<RegisterResponse>, AppError> {
+    if !state.config.allow_public_registration {
+        return Err(AppError::Forbidden(
+            "Die öffentliche Registrierung ist deaktiviert. Bitte wenden Sie sich an Ihren Administrator.".into(),
+        ));
+    }
+
     // Validate basic inputs
     if body.email.is_empty() || body.password.is_empty() {
         return Err(AppError::BadRequest("Email and password are required".into()));
@@ -286,4 +299,67 @@ pub async fn me(
         created_at: user_model.created_at,
         updated_at: user_model.updated_at,
     }))
+}
+
+// ---------------------------------------------------------------------------
+// POST /change-password
+// ---------------------------------------------------------------------------
+
+pub async fn change_password(
+    State(state): State<AppState>,
+    auth_user: AuthUser,
+    Json(body): Json<ChangePasswordRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if body.current_password.is_empty() || body.new_password.is_empty() {
+        return Err(AppError::BadRequest(
+            "Aktuelles und neues Passwort sind erforderlich.".into(),
+        ));
+    }
+    if body.new_password.chars().count() < 8 {
+        return Err(AppError::BadRequest(
+            "Das neue Passwort muss mindestens 8 Zeichen lang sein.".into(),
+        ));
+    }
+
+    let tenant_id = auth_user.tenant_id;
+    let user_id = auth_user.user_id;
+    let current_password = body.current_password;
+    let new_password = body.new_password;
+
+    execute_with_tenant(&state.db, &tenant_id, |txn| {
+        Box::pin(async move {
+            let user_model = user::Entity::find()
+                .filter(user::Column::Id.eq(user_id))
+                .filter(user::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Benutzer nicht gefunden.".into()))?;
+
+            let parsed_hash = PasswordHash::new(&user_model.password_hash)
+                .map_err(|e| AppError::InternalError(format!("Failed to parse password hash: {e}")))?;
+
+            Argon2::default()
+                .verify_password(current_password.as_bytes(), &parsed_hash)
+                .map_err(|_| AppError::BadRequest("Das aktuelle Passwort ist nicht korrekt.".into()))?;
+
+            let salt = SaltString::generate(&mut OsRng);
+            let new_hash = Argon2::default()
+                .hash_password(new_password.as_bytes(), &salt)
+                .map_err(|e| AppError::InternalError(format!("Failed to hash password: {e}")))?
+                .to_string();
+
+            let mut active: user::ActiveModel = user_model.into();
+            active.password_hash = Set(new_hash);
+            active.updated_at = Set(chrono::Utc::now().into());
+            active.update(txn).await?;
+
+            Ok(())
+        })
+    })
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": "Passwort erfolgreich geändert."
+    })))
 }

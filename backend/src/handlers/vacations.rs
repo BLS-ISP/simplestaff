@@ -11,17 +11,23 @@ use std::collections::HashMap;
 use crate::errors::AppError;
 use crate::middleware::auth::AuthUser;
 use crate::middleware::tenant::execute_with_tenant;
+use crate::models::closed_day;
 use crate::models::employee;
 use crate::models::employee_vacation::{self, ActiveModel, Column, Entity as Vacation};
 use crate::models::user;
 use crate::AppState;
+use std::collections::HashSet;
 
-fn count_vacation_days(start_date: NaiveDate, end_date: NaiveDate) -> f32 {
+fn count_vacation_days(
+    start_date: NaiveDate,
+    end_date: NaiveDate,
+    closed_dates: &HashSet<NaiveDate>,
+) -> f32 {
     let mut count = 0.0;
     let mut curr = start_date;
     while curr <= end_date {
         let wd = curr.weekday().number_from_monday();
-        if wd <= 5 {
+        if wd <= 5 && !closed_dates.contains(&curr) {
             count += 1.0;
         }
         if let Some(next) = curr.succ_opt() {
@@ -268,7 +274,20 @@ pub async fn approve_vacation(
 
                 // If it wasn't already approved, deduct the vacation days from employee balance
                 if status_changed {
-                    let days = count_vacation_days(updated_vacation.start_date, updated_vacation.end_date);
+                    let closed_list = closed_day::Entity::find()
+                        .filter(closed_day::Column::TenantId.eq(auth.tenant_id))
+                        .filter(closed_day::Column::ClosedDate.gte(updated_vacation.start_date))
+                        .filter(closed_day::Column::ClosedDate.lte(updated_vacation.end_date))
+                        .all(txn)
+                        .await?;
+                    let closed_dates: HashSet<NaiveDate> =
+                        closed_list.into_iter().map(|c| c.closed_date).collect();
+
+                    let days = count_vacation_days(
+                        updated_vacation.start_date,
+                        updated_vacation.end_date,
+                        &closed_dates,
+                    );
                     let mut active_emp: employee::ActiveModel = emp.into();
                     let new_remaining = active_emp.vacation_days_remaining.unwrap() - days;
                     active_emp.vacation_days_remaining = Set(new_remaining);
@@ -338,7 +357,20 @@ pub async fn reject_vacation(
 
                 // If it was previously approved, refund the vacation days back to the employee balance
                 if previous_status == "approved" {
-                    let days = count_vacation_days(updated_vacation.start_date, updated_vacation.end_date);
+                    let closed_list = closed_day::Entity::find()
+                        .filter(closed_day::Column::TenantId.eq(auth.tenant_id))
+                        .filter(closed_day::Column::ClosedDate.gte(updated_vacation.start_date))
+                        .filter(closed_day::Column::ClosedDate.lte(updated_vacation.end_date))
+                        .all(txn)
+                        .await?;
+                    let closed_dates: HashSet<NaiveDate> =
+                        closed_list.into_iter().map(|c| c.closed_date).collect();
+
+                    let days = count_vacation_days(
+                        updated_vacation.start_date,
+                        updated_vacation.end_date,
+                        &closed_dates,
+                    );
                     let mut active_emp: employee::ActiveModel = emp.into();
                     let new_remaining = active_emp.vacation_days_remaining.unwrap() + days;
                     active_emp.vacation_days_remaining = Set(new_remaining);
@@ -431,4 +463,21 @@ pub async fn list_tenant_vacations(
         .collect();
 
     Ok(Json(response))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_count_vacation_days_excludes_weekends_and_holidays() {
+        let start = NaiveDate::from_ymd_opt(2026, 4, 2).unwrap(); // Thursday
+        let end = NaiveDate::from_ymd_opt(2026, 4, 7).unwrap();   // Tuesday
+        let mut closed = HashSet::new();
+        closed.insert(NaiveDate::from_ymd_opt(2026, 4, 3).unwrap()); // Karfreitag
+        closed.insert(NaiveDate::from_ymd_opt(2026, 4, 6).unwrap()); // Ostermontag
+
+        // Weekdays in range: Thu Apr 2, Fri Apr 3 (holiday), Mon Apr 6 (holiday), Tue Apr 7 -> 2 days
+        assert_eq!(count_vacation_days(start, end, &closed), 2.0);
+    }
 }

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { ValidationWarning } from '../api/client';
 import type { Employee, ShiftType, ShiftAssignment, Vacation, BlockedDay, ClosedDay } from '../types';
+import { useAuth } from '../hooks/useAuth';
 
 // ── Constants ─────────────────────────────────────────────────
 
@@ -38,6 +39,50 @@ function getShiftDurationHours(st: ShiftType): number {
   return Math.max(0, totalMinutes / 60);
 }
 
+function getAssignmentDurationHours(ass: ShiftAssignment, st: ShiftType): number {
+  if (ass.status === 'sick') return 0;
+  const startStr = ass.actual_start || st.start_time;
+  const endStr = ass.actual_end || st.end_time;
+  const breakMins = ass.actual_break_minutes ?? st.break_minutes;
+
+  const [sH, sM] = startStr.split(':').map(Number);
+  const [eH, eM] = endStr.split(':').map(Number);
+
+  let startMinutes = sH * 60 + sM;
+  let endMinutes = eH * 60 + eM;
+
+  if (endMinutes <= startMinutes) {
+    endMinutes += 24 * 60;
+  }
+
+  const totalMinutes = endMinutes - startMinutes - breakMins;
+  return Math.max(0, totalMinutes / 60);
+}
+
+function getNightMinutes(startStr: string, endStr: string): number {
+  const [sH, sM] = startStr.split(':').map(Number);
+  const [eH, eM] = endStr.split(':').map(Number);
+  const start = sH * 60 + sM;
+  let end = eH * 60 + eM;
+  if (end <= start) end += 24 * 60;
+
+  let nightMins = 0;
+  // Night windows in [0, 48h]: [0, 360] (00:00-06:00), [1320, 1800] (22:00-06:00 next day), [2760, 3240]
+  const windows: [number, number][] = [
+    [0, 360],
+    [1320, 1800],
+    [2760, 3240],
+  ];
+  for (const [wStart, wEnd] of windows) {
+    const overlapStart = Math.max(start, wStart);
+    const overlapEnd = Math.min(end, wEnd);
+    if (overlapEnd > overlapStart) {
+      nightMins += overlapEnd - overlapStart;
+    }
+  }
+  return nightMins;
+}
+
 function getDaysInMonth(year: number, month: number): Date[] {
   const date = new Date(year, month, 1);
   const days: Date[] = [];
@@ -53,6 +98,8 @@ function getDaysInMonth(year: number, month: number): Date[] {
 export default function ShiftPlanMonthPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isViewer = (user?.role || 'viewer') === 'viewer';
 
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [month, setMonth] = useState(() => new Date().getMonth());
@@ -64,10 +111,18 @@ export default function ShiftPlanMonthPage() {
   const [blockedMap, setBlockedMap] = useState<Record<string, BlockedDay[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string>('');
+  const [onlyMyShifts, setOnlyMyShifts] = useState(false);
 
   // Dropdown cell state
   const [activeCell, setActiveCell] = useState<{ empId: string; dateStr: string } | null>(null);
+  const [editStatus, setEditStatus] = useState<string>('planned');
+  const [editActualStart, setEditActualStart] = useState<string>('');
+  const [editActualEnd, setEditActualEnd] = useState<string>('');
+  const [editActualBreak, setEditActualBreak] = useState<string>('');
+  const [editNotes, setEditNotes] = useState<string>('');
+  const [savingDetails, setSavingDetails] = useState(false);
 
   // Validation modal state
   const [proposedAssignment, setProposedAssignment] = useState<{
@@ -161,11 +216,15 @@ export default function ShiftPlanMonthPage() {
       setClosedDays(closedRes);
       setTenantName(tenantRes?.name || 'SimpleStaff');
 
-      // Fetch vacations + blocked days for all employees
-      const vacPromises = emps.map((e: Employee) =>
+      // Fetch vacations + blocked days (for viewer only own employee to avoid 403)
+      const targetEmps = isViewer
+        ? emps.filter((e: Employee) => e.email && user?.email && e.email.toLowerCase() === user.email.toLowerCase())
+        : emps;
+
+      const vacPromises = targetEmps.map((e: Employee) =>
         api.vacations.list(e.id).then((v) => [e.id, v] as const).catch(() => [e.id, []] as const)
       );
-      const blockPromises = emps.map((e: Employee) =>
+      const blockPromises = targetEmps.map((e: Employee) =>
         api.blockedDays.list(e.id).then((b) => [e.id, b] as const).catch(() => [e.id, []] as const)
       );
 
@@ -184,7 +243,7 @@ export default function ShiftPlanMonthPage() {
     } finally {
       if (isInitial) setLoading(false);
     }
-  }, [year, month, t]);
+  }, [year, month, t, isViewer, user?.email]);
 
   useEffect(() => {
     fetchData(true);
@@ -269,12 +328,182 @@ export default function ShiftPlanMonthPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportPayrollCSV = () => {
+    const headers = [
+      'Mitarbeiter',
+      'E-Mail',
+      'Soll-Stunden (Monat)',
+      'Geplante Schichten',
+      'Geplante Stunden (Netto)',
+      'Ist-Stunden (Netto)',
+      'Differenz (Ist - Soll)',
+      'Nachtstunden (22:00-06:00)',
+      'Sonntagsstunden',
+      'Feiertagsstunden',
+      'Krankheitstage (Schichten)',
+      'Urlaubstage (Arbeitstage)',
+    ];
+
+    const rows = employees.map((emp) => {
+      let plannedShifts = 0;
+      let plannedHours = 0;
+      let actualHours = 0;
+      let nightHours = 0;
+      let sundayHours = 0;
+      let holidayHours = 0;
+      let sickDays = 0;
+      let vacationDays = 0;
+
+      for (const d of days) {
+        const dateStr = toISODateString(d);
+        const ass = assignmentLookup[`${emp.id}|${dateStr}`];
+        const closure = closedLookup[dateStr];
+        const isHoliday = Boolean(closure?.is_holiday);
+        const isSunday = d.getDay() === 0;
+        const isWeekday = d.getDay() >= 1 && d.getDay() <= 5;
+
+        if (ass) {
+          const st = shiftTypeMap[ass.shift_type_id];
+          if (ass.status === 'sick') {
+            sickDays += 1;
+          } else if (st) {
+            plannedShifts += 1;
+            const pDur = getShiftDurationHours(st);
+            const aDur = getAssignmentDurationHours(ass, st);
+            plannedHours += pDur;
+            actualHours += aDur;
+
+            const startStr = ass.actual_start || st.start_time;
+            const endStr = ass.actual_end || st.end_time;
+            nightHours += getNightMinutes(startStr, endStr) / 60;
+
+            if (isSunday) {
+              sundayHours += aDur;
+            }
+            if (isHoliday) {
+              holidayHours += aDur;
+            }
+          }
+        }
+
+        if (vacationLookup.has(`${emp.id}|${dateStr}`) && isWeekday && !closure) {
+          vacationDays += 1;
+        }
+      }
+
+      const targetHours = getTargetHours(emp);
+      const diff = actualHours - targetHours;
+      const fmt = (n: number) => n.toFixed(2).replace('.', ',');
+
+      const cells = [
+        getEmployeeName(emp),
+        emp.email || '',
+        fmt(targetHours),
+        String(plannedShifts),
+        fmt(plannedHours),
+        fmt(actualHours),
+        fmt(diff),
+        fmt(nightHours),
+        fmt(sundayHours),
+        fmt(holidayHours),
+        String(sickDays),
+        String(vacationDays),
+      ];
+      return cells.map((c) => `"${(c || '').replace(/"/g, '""')}"`).join(';');
+    });
+
+    const creationTime = new Date().toLocaleString('de-DE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const metaLines = [
+      `"Lohnbuchhaltungs-Auswertung";"${MONTH_NAMES_DE[month]} ${year}"`,
+      `"Betrieb";"${tenantName || 'SimpleStaff'}"`,
+      `"Erstellt am";"${creationTime} Uhr"`,
+      `""`,
+    ];
+
+    const tableHeaderLine = headers.map((h) => `"${h}"`).join(';');
+    const csvContent = '\uFEFF' + [...metaLines, tableHeaderLine, ...rows].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `lohnabrechnung_${year}_${String(month + 1).padStart(2, '0')}.csv`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   // ── Cell Interaction ──
   const toggleCell = (empId: string, dateStr: string) => {
+    if (isViewer) return;
     if (activeCell?.empId === empId && activeCell?.dateStr === dateStr) {
       setActiveCell(null);
     } else {
+      const existing = assignmentLookup[`${empId}|${dateStr}`];
+      if (existing) {
+        const st = shiftTypeMap[existing.shift_type_id];
+        setEditStatus(existing.status || 'planned');
+        setEditActualStart(existing.actual_start ? existing.actual_start.substring(0, 5) : st ? st.start_time.substring(0, 5) : '');
+        setEditActualEnd(existing.actual_end ? existing.actual_end.substring(0, 5) : st ? st.end_time.substring(0, 5) : '');
+        setEditActualBreak(existing.actual_break_minutes != null ? String(existing.actual_break_minutes) : st ? String(st.break_minutes) : '0');
+        setEditNotes(existing.notes || '');
+      } else {
+        setEditStatus('planned');
+        setEditActualStart('');
+        setEditActualEnd('');
+        setEditActualBreak('');
+        setEditNotes('');
+      }
       setActiveCell({ empId, dateStr });
+    }
+  };
+
+  const handleSaveAssignmentDetails = async (assignmentId: string) => {
+    try {
+      setSavingDetails(true);
+      setError(null);
+      const formatTimeForApi = (val: string) => {
+        if (!val) return undefined;
+        return val.length === 5 ? `${val}:00` : val;
+      };
+      await api.assignments.update(assignmentId, {
+        status: editStatus,
+        actual_start: formatTimeForApi(editActualStart),
+        actual_end: formatTimeForApi(editActualEnd),
+        actual_break_minutes: editActualBreak !== '' ? parseInt(editActualBreak, 10) : undefined,
+        notes: editNotes,
+      });
+      setActiveCell(null);
+      await fetchData(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Details konnten nicht gespeichert werden.');
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
+  const handleMarkSick = async (assignmentId: string) => {
+    try {
+      setSavingDetails(true);
+      setError(null);
+      await api.assignments.markSick(assignmentId);
+      setActiveCell(null);
+      setInfoMessage('Mitarbeiter als krank markiert und offene Vertretungsanfrage in der Tauschbörse erstellt.');
+      await fetchData(false);
+      setTimeout(() => setInfoMessage(null), 5000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Krankmeldung fehlgeschlagen.');
+    } finally {
+      setSavingDetails(false);
     }
   };
 
@@ -291,6 +520,7 @@ export default function ShiftPlanMonthPage() {
   }, []);
 
   const handleAssign = async (employeeId: string, dateStr: string, shiftTypeId: string, force: boolean = false) => {
+    const existingAss = assignmentLookup[`${employeeId}|${dateStr}`];
     setActiveCell(null);
     try {
       if (!force) {
@@ -309,11 +539,17 @@ export default function ShiftPlanMonthPage() {
         }
       }
 
-      await api.assignments.create({
-        employee_id: employeeId,
-        shift_type_id: shiftTypeId,
-        assignment_date: dateStr,
-      });
+      if (existingAss) {
+        await api.assignments.update(existingAss.id, {
+          shift_type_id: shiftTypeId,
+        });
+      } else {
+        await api.assignments.create({
+          employee_id: employeeId,
+          shift_type_id: shiftTypeId,
+          assignment_date: dateStr,
+        });
+      }
       setShowValidationModal(false);
       setProposedAssignment(null);
       setValidationWarnings([]);
@@ -385,6 +621,13 @@ export default function ShiftPlanMonthPage() {
       : emp.weekly_hours * 4.33;
   };
 
+  const displayedEmployees = useMemo(() => {
+    if (isViewer && onlyMyShifts && user?.email) {
+      return employees.filter((e) => e.email?.toLowerCase() === user.email.toLowerCase());
+    }
+    return employees;
+  }, [employees, isViewer, onlyMyShifts, user?.email]);
+
   const calculateEmpStats = (emp: Employee) => {
     let shifts = 0;
     let hours = 0;
@@ -395,9 +638,9 @@ export default function ShiftPlanMonthPage() {
       const ass = assignmentLookup[`${emp.id}|${dateStr}`];
       if (ass) {
         const st = shiftTypeMap[ass.shift_type_id];
-        if (st) {
+        if (st && ass.status !== 'sick') {
           shifts++;
-          hours += getShiftDurationHours(st);
+          hours += getAssignmentDurationHours(ass, st);
         }
       }
       if (vacationLookup.has(`${emp.id}|${dateStr}`)) {
@@ -435,13 +678,33 @@ export default function ShiftPlanMonthPage() {
         </div>
 
         <div className="no-print" style={{ display: 'flex', gap: 'var(--space-sm)', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={openAutoModal}
-            style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-          >
-            🪄 {t('shiftPlan.autoSchedule', 'Automatisch besetzen')}
-          </button>
+          {isViewer ? (
+            <button
+              className={`btn btn-sm ${onlyMyShifts ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setOnlyMyShifts(!onlyMyShifts)}
+              style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
+              {onlyMyShifts ? '👤 Nur meine Schichten' : '👥 Gesamtes Team'}
+            </button>
+          ) : (
+            <>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={openAutoModal}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+              >
+                🪄 {t('shiftPlan.autoSchedule', 'Automatisch besetzen')}
+              </button>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={handleExportPayrollCSV}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                title="Lohnbuchhaltungs-Auswertung inkl. Soll/Ist, Nacht-, Sonntags-, Feiertagsstunden, Krank & Urlaub"
+              >
+                📊 Lohnbuchhaltungs-CSV
+              </button>
+            </>
+          )}
           <button
             className="btn btn-secondary btn-sm"
             onClick={handleExportCSV}
@@ -465,11 +728,17 @@ export default function ShiftPlanMonthPage() {
         </div>
       </div>
 
-      {/* Error */}
+      {/* Error / Info */}
       {error && (
         <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: 'var(--space-sm) var(--space-md)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{error}</span>
           <button className="btn btn-ghost btn-sm" onClick={() => setError(null)}>✕</button>
+        </div>
+      )}
+      {infoMessage && (
+        <div style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#10b981', padding: 'var(--space-sm) var(--space-md)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>✅ {infoMessage}</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => setInfoMessage(null)}>✕</button>
         </div>
       )}
 
@@ -586,7 +855,7 @@ export default function ShiftPlanMonthPage() {
 
               {/* Body */}
               <tbody>
-                {employees.length === 0 && (
+                {displayedEmployees.length === 0 && (
                   <tr>
                     <td
                       colSpan={days.length + 1}
@@ -600,8 +869,10 @@ export default function ShiftPlanMonthPage() {
                     </td>
                   </tr>
                 )}
-                {employees.map((emp) => (
-                  <tr key={emp.id}>
+                {displayedEmployees.map((emp) => {
+                  const isOwnRow = isViewer && user?.email && emp.email?.toLowerCase() === user.email.toLowerCase();
+                  return (
+                  <tr key={emp.id} style={isOwnRow ? { background: 'rgba(99, 102, 241, 0.06)' } : undefined}>
                     {/* Employee Name (sticky) */}
                     <td
                       style={{
@@ -610,8 +881,8 @@ export default function ShiftPlanMonthPage() {
                         zIndex: 2,
                         background: 'var(--bg-elevated)',
                         padding: 'var(--space-sm) var(--space-md)',
-                        fontWeight: 500,
-                        color: 'var(--text-primary)',
+                        fontWeight: isOwnRow ? 700 : 500,
+                        color: isOwnRow ? 'var(--accent)' : 'var(--text-primary)',
                         fontSize: '0.9rem',
                         borderBottom: '1px solid var(--border-primary)',
                         whiteSpace: 'nowrap',
@@ -621,7 +892,7 @@ export default function ShiftPlanMonthPage() {
                         boxShadow: '2px 0 5px rgba(0,0,0,0.05)',
                       }}
                     >
-                      {getEmployeeName(emp)}
+                      {getEmployeeName(emp)} {isOwnRow ? '(Ich)' : ''}
                     </td>
 
                     {/* Day Cells */}
@@ -637,13 +908,15 @@ export default function ShiftPlanMonthPage() {
                       const isClosed = closure && !closure.is_holiday;
                       const isCellActive = activeCell?.empId === emp.id && activeCell?.dateStr === dateStr;
                       const st = assignment ? shiftTypeMap[assignment.shift_type_id] : null;
+                      const isSick = assignment?.status === 'sick';
+                      const hasActualTimes = Boolean(assignment?.actual_start && assignment?.actual_end);
 
                       return (
                         <td
                           key={dateStr}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (!isBlocked && !isClosed) toggleCell(emp.id, dateStr);
+                            if (!isViewer && !isBlocked && !isClosed) toggleCell(emp.id, dateStr);
                           }}
                           style={{
                             padding: 'var(--space-xs)',
@@ -660,7 +933,7 @@ export default function ShiftPlanMonthPage() {
                             position: 'relative',
                             zIndex: isCellActive ? 10 : undefined,
                             textAlign: 'center',
-                            cursor: isBlocked || isClosed ? 'not-allowed' : 'pointer',
+                            cursor: isViewer ? 'default' : isBlocked || isClosed ? 'not-allowed' : 'pointer',
                             height: 48,
                             verticalAlign: 'middle',
                             transition: 'var(--transition-fast)',
@@ -718,27 +991,34 @@ export default function ShiftPlanMonthPage() {
                                 gap: 2,
                                 padding: '3px 6px',
                                 borderRadius: 'var(--radius-sm)',
-                                backgroundColor: `${st.color}22`,
-                                border: `1.5px solid ${st.color}`,
-                                color: st.color,
+                                backgroundColor: isSick ? 'rgba(239, 68, 68, 0.16)' : `${st.color}22`,
+                                border: `1.5px ${isSick ? 'dashed #ef4444' : `solid ${st.color}`}`,
+                                color: isSick ? '#ef4444' : st.color,
                                 fontWeight: 600,
                                 fontSize: '0.75rem',
                                 whiteSpace: 'nowrap',
-                                boxShadow: `0 0 6px ${st.color}33`,
+                                boxShadow: isSick ? 'none' : `0 0 6px ${st.color}33`,
                                 width: '100%',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
+                                textDecoration: isSick ? 'line-through' : 'none',
                               }}
-                              title={`${st.name} (${st.start_time.substring(0, 5)} - ${st.end_time.substring(0, 5)})`}
+                              title={
+                                isSick
+                                  ? `Krankgemeldet (${st.name})`
+                                  : hasActualTimes
+                                    ? `${st.name} (Ist: ${assignment.actual_start!.substring(0, 5)} - ${assignment.actual_end!.substring(0, 5)})`
+                                    : `${st.name} (${st.start_time.substring(0, 5)} - ${st.end_time.substring(0, 5)})`
+                              }
                             >
                               <span className="shift-badge-name-short no-print" style={{ fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {st.name.length > 5 ? st.name.substring(0, 4) + '.' : st.name}
+                                {isSick ? '🤒' : ''}{st.name.length > 5 ? st.name.substring(0, 4) + '.' : st.name}{hasActualTimes && !isSick ? '✓' : ''}
                               </span>
                               <span className="shift-badge-name-full">
-                                {st.name}
+                                {isSick ? `🤒 ${st.name}` : st.name}
                               </span>
                               <span className="shift-badge-time" style={{ fontSize: '0.65rem', opacity: 0.8, fontVariantNumeric: 'tabular-nums' }}>
-                                {st.start_time.substring(0, 5)} - {st.end_time.substring(0, 5)}
+                                {(assignment.actual_start || st.start_time).substring(0, 5)} - {(assignment.actual_end || st.end_time).substring(0, 5)}
                               </span>
                             </div>
                           )}
@@ -753,7 +1033,8 @@ export default function ShiftPlanMonthPage() {
                       );
                     })}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1166,27 +1447,140 @@ export default function ShiftPlanMonthPage() {
                   ))}
                 </div>
 
-                {/* Remove Option */}
+                {/* Edit Existing Assignment Details & Sick Leave */}
                 {(() => {
                   const ass = assignmentLookup[`${activeCell.empId}|${activeCell.dateStr}`];
-                  return ass ? (
-                    <button
-                      className="btn btn-danger"
-                      type="button"
+                  if (!ass) return null;
+                  return (
+                    <div
                       style={{
-                        width: '100%',
                         marginTop: 'var(--space-sm)',
+                        paddingTop: 'var(--space-sm)',
+                        borderTop: '1px solid var(--border-primary)',
                         display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 8,
-                        minHeight: 38,
+                        flexDirection: 'column',
+                        gap: 10,
                       }}
-                      onClick={() => handleRemove(ass.id)}
                     >
-                      🗑️ Schicht entfernen
-                    </button>
-                  ) : null;
+                      <label className="label" style={{ marginBottom: 0 }}>
+                        ⏱️ Ist-Arbeitszeit &amp; Status erfassen
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 2 }}>
+                            Status
+                          </label>
+                          <select
+                            className="input"
+                            value={editStatus}
+                            onChange={(e) => setEditStatus(e.target.value)}
+                            style={{ padding: '6px 8px', fontSize: '0.85rem' }}
+                          >
+                            <option value="planned">Geplant</option>
+                            <option value="confirmed">Bestätigt</option>
+                            <option value="completed">✓ Abgeschlossen</option>
+                            <option value="sick">🤒 Krank</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 2 }}>
+                            Pause (Min.)
+                          </label>
+                          <input
+                            type="number"
+                            className="input"
+                            min={0}
+                            max={240}
+                            value={editActualBreak}
+                            onChange={(e) => setEditActualBreak(e.target.value)}
+                            style={{ padding: '6px 8px', fontSize: '0.85rem' }}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 2 }}>
+                            Ist-Beginn
+                          </label>
+                          <input
+                            type="time"
+                            className="input"
+                            value={editActualStart}
+                            onChange={(e) => setEditActualStart(e.target.value)}
+                            style={{ padding: '6px 8px', fontSize: '0.85rem' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 2 }}>
+                            Ist-Ende
+                          </label>
+                          <input
+                            type="time"
+                            className="input"
+                            value={editActualEnd}
+                            onChange={(e) => setEditActualEnd(e.target.value)}
+                            style={{ padding: '6px 8px', fontSize: '0.85rem' }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 2 }}>
+                          Notiz
+                        </label>
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="Optionale Notiz..."
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                          style={{ padding: '6px 8px', fontSize: '0.85rem' }}
+                        />
+                      </div>
+
+                      <button
+                        className="btn btn-primary btn-sm"
+                        type="button"
+                        disabled={savingDetails}
+                        onClick={() => handleSaveAssignmentDetails(ass.id)}
+                        style={{ width: '100%' }}
+                      >
+                        💾 {savingDetails ? 'Speichere…' : 'Ist-Zeiten & Status speichern'}
+                      </button>
+
+                      {ass.status !== 'sick' && (
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          type="button"
+                          disabled={savingDetails}
+                          onClick={() => handleMarkSick(ass.id)}
+                          style={{
+                            width: '100%',
+                            borderColor: 'rgba(245, 158, 11, 0.5)',
+                            color: '#f59e0b',
+                          }}
+                        >
+                          🤒 Krankmelden &amp; Vertretung suchen
+                        </button>
+                      )}
+
+                      <button
+                        className="btn btn-danger btn-sm"
+                        type="button"
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                        }}
+                        onClick={() => handleRemove(ass.id)}
+                      >
+                        🗑️ Schicht entfernen
+                      </button>
+                    </div>
+                  );
                 })()}
               </div>
             </div>

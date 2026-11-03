@@ -12,7 +12,6 @@ import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
 import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import EmployeesPage from './pages/EmployeesPage';
 import EmployeeDetailPage from './pages/EmployeeDetailPage';
@@ -31,13 +30,15 @@ export default function App() {
       <Routes>
         {/* Public Auth Routes */}
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/register" element={<Navigate to="/login" replace />} />
 
         {/* Protected Dashboard & Self-Service Routes (all authenticated tenant users) */}
         <Route element={<ProtectedRoute allowedRoles={['admin', 'planner', 'viewer', 'super_admin']} />}>
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/shift-plan" element={<ShiftPlanPage />} />
+            <Route path="/shift-plan/month" element={<ShiftPlanMonthPage />} />
             <Route path="/vacations" element={<VacationsPage />} />
             <Route path="/shift-swaps" element={<ShiftSwapsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
@@ -50,8 +51,6 @@ export default function App() {
             <Route path="/employees" element={<EmployeesPage />} />
             <Route path="/employees/:id" element={<EmployeeDetailPage />} />
             <Route path="/shift-types" element={<ShiftTypesPage />} />
-            <Route path="/shift-plan" element={<ShiftPlanPage />} />
-            <Route path="/shift-plan/month" element={<ShiftPlanMonthPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>

@@ -147,7 +147,8 @@ pub async fn validate_assignment(
             Condition::all()
                 .add(shift_assignment::Column::TenantId.eq(*tenant_id))
                 .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
-                .add(shift_assignment::Column::AssignmentDate.eq(previous_day)),
+                .add(shift_assignment::Column::AssignmentDate.eq(previous_day))
+                .add(shift_assignment::Column::Status.ne("sick")),
         )
         .all(txn)
         .await?;
@@ -204,7 +205,8 @@ pub async fn validate_assignment(
             Condition::all()
                 .add(shift_assignment::Column::TenantId.eq(*tenant_id))
                 .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
-                .add(shift_assignment::Column::AssignmentDate.eq(next_day)),
+                .add(shift_assignment::Column::AssignmentDate.eq(next_day))
+                .add(shift_assignment::Column::Status.ne("sick")),
         )
         .all(txn)
         .await?;
@@ -261,7 +263,8 @@ pub async fn validate_assignment(
             Condition::all()
                 .add(shift_assignment::Column::TenantId.eq(*tenant_id))
                 .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
-                .add(shift_assignment::Column::AssignmentDate.eq(*assignment_date)),
+                .add(shift_assignment::Column::AssignmentDate.eq(*assignment_date))
+                .add(shift_assignment::Column::Status.ne("sick")),
         )
         .all(txn)
         .await?;
@@ -326,7 +329,8 @@ pub async fn validate_assignment(
                 .add(shift_assignment::Column::TenantId.eq(*tenant_id))
                 .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
                 .add(shift_assignment::Column::AssignmentDate.gte(week_start))
-                .add(shift_assignment::Column::AssignmentDate.lte(week_end)),
+                .add(shift_assignment::Column::AssignmentDate.lte(week_end))
+                .add(shift_assignment::Column::Status.ne("sick")),
         )
         .all(txn)
         .await?;
@@ -447,6 +451,7 @@ pub async fn validate_assignment(
                     .add(shift_assignment::Column::TenantId.eq(*tenant_id))
                     .add(shift_assignment::Column::ShiftTypeId.eq(*shift_type_id))
                     .add(shift_assignment::Column::AssignmentDate.eq(*assignment_date))
+                    .add(shift_assignment::Column::Status.ne("sick"))
             )
             .count(txn)
             .await?;
@@ -458,6 +463,7 @@ pub async fn validate_assignment(
                     .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
                     .add(shift_assignment::Column::ShiftTypeId.eq(*shift_type_id))
                     .add(shift_assignment::Column::AssignmentDate.eq(*assignment_date))
+                    .add(shift_assignment::Column::Status.ne("sick"))
             )
             .one(txn)
             .await?

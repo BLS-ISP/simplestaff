@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
-import type { Employee, ShiftType, ShiftAssignment, Vacation } from '../types';
+import type { Employee, ShiftType, ShiftAssignment, Vacation, ShiftSwap } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 
@@ -15,6 +15,15 @@ import { useNavigate } from 'react-router-dom';
 
 function getTodayISO(): string {
   const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getFutureISO(daysAhead: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + daysAhead);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -69,11 +78,13 @@ interface StatCardProps {
   label: string;
   gradient: string;
   color: string;
+  onClick?: () => void;
 }
 
-function StatCard({ icon, value, label, gradient, color }: StatCardProps) {
+function StatCard({ icon, value, label, gradient, color, onClick }: StatCardProps) {
   return (
     <div
+      onClick={onClick}
       style={{
         position: 'relative',
         borderRadius: 'var(--radius-lg)',
@@ -157,23 +168,30 @@ export default function DashboardPage() {
   // Employee-specific state
   const [myEmployee, setMyEmployee] = useState<Employee | null>(null);
   const [myVacations, setMyVacations] = useState<Vacation[]>([]);
+  const [upcomingAssignments, setUpcomingAssignments] = useState<ShiftAssignment[]>([]);
 
   // Manager-specific state
   const [pendingVacationsCount, setPendingVacationsCount] = useState(0);
+  const [allVacations, setAllVacations] = useState<(Vacation & { employee_name: string })[]>([]);
+  const [shiftSwaps, setShiftSwaps] = useState<ShiftSwap[]>([]);
 
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
         const today = getTodayISO();
+        const nextWeek = getFutureISO(7);
         
-        // Fetch assignments for today & shift types
-        const [assignRes, stRes] = await Promise.all([
-          api.assignments.list({ start_date: today, end_date: today }),
+        // Fetch assignments & shift types & shift swaps
+        const [assignRes, stRes, swapsRes] = await Promise.all([
+          api.assignments.list({ start_date: today, end_date: nextWeek }),
           api.shiftTypes.list(),
+          api.shiftSwaps.list().catch(() => [] as ShiftSwap[]),
         ]);
-        setAssignments(assignRes);
+        setAssignments(assignRes.filter(a => a.assignment_date === today));
+        setUpcomingAssignments(assignRes);
         setShiftTypes(stRes);
+        setShiftSwaps(swapsRes);
 
         if (isEmployee) {
           // Employee profile and vacations
@@ -190,6 +208,7 @@ export default function DashboardPage() {
             api.vacations.listAll(),
           ]);
           setEmployees(empRes.data);
+          setAllVacations(vacsRes);
           setPendingVacationsCount(vacsRes.filter(v => v.status === 'requested').length);
         }
       } catch (err) {
@@ -217,11 +236,15 @@ export default function DashboardPage() {
 
   // Filter assignments based on role
   const displayAssignments = isEmployee && myEmployee
-    ? assignments.filter(a => a.employee_id === myEmployee.id)
+    ? upcomingAssignments.filter(a => a.employee_id === myEmployee.id)
     : assignments;
 
-  const todayShiftsCount = displayAssignments.length;
+  const todayShiftsCount = isEmployee && myEmployee
+    ? assignments.filter(a => a.employee_id === myEmployee.id).length
+    : assignments.length;
   const activeEmployees = employees.filter(e => e.is_active).length;
+  const openSwapsCount = shiftSwaps.filter(s => s.status === 'open' || s.status === 'proposed').length;
+  const sickTodayCount = assignments.filter(a => a.status === 'sick').length;
 
   return (
     <div className="animate-slide-up">
@@ -241,6 +264,7 @@ export default function DashboardPage() {
           label={isEmployee ? t('dashboard.myTodayShifts', 'Meine Schichten heute') : t('dashboard.todayShifts', 'Heute geplante Schichten')}
           gradient="linear-gradient(135deg, rgba(59,130,246,0.5), rgba(99,102,241,0.3))"
           color="#3b82f6"
+          onClick={() => navigate('/shift-plan')}
         />
         {isEmployee && myEmployee ? (
           <>
@@ -250,6 +274,7 @@ export default function DashboardPage() {
               label={t('employees.vacationRemaining', 'Verbleibender Resturlaub')}
               gradient="linear-gradient(135deg, rgba(16,185,129,0.5), rgba(5,150,105,0.3))"
               color="#10b981"
+              onClick={() => navigate('/vacations')}
             />
             <StatCard
               icon={<InboxIcon />}
@@ -257,6 +282,7 @@ export default function DashboardPage() {
               label={t('employees.vacationDays', 'Jahresurlaubstage')}
               gradient="linear-gradient(135deg, rgba(245,158,11,0.5), rgba(217,119,6,0.3))"
               color="#f59e0b"
+              onClick={() => navigate('/vacations')}
             />
             <StatCard
               icon={<AlertIcon />}
@@ -264,6 +290,7 @@ export default function DashboardPage() {
               label={t('dashboard.myPendingVacations', 'Meine offenen Urlaubsanträge')}
               gradient="linear-gradient(135deg, rgba(239,68,68,0.5), rgba(220,38,38,0.3))"
               color="#ef4444"
+              onClick={() => navigate('/vacations')}
             />
           </>
         ) : (
@@ -274,6 +301,7 @@ export default function DashboardPage() {
               label={t('dashboard.activeEmployees', 'Aktive Mitarbeiter')}
               gradient="linear-gradient(135deg, rgba(16,185,129,0.5), rgba(5,150,105,0.3))"
               color="#10b981"
+              onClick={() => navigate('/employees')}
             />
             <StatCard
               icon={<InboxIcon />}
@@ -281,33 +309,36 @@ export default function DashboardPage() {
               label={t('dashboard.pendingVacations', 'Offene Urlaubsanträge')}
               gradient="linear-gradient(135deg, rgba(245,158,11,0.5), rgba(217,119,6,0.3))"
               color="#f59e0b"
+              onClick={() => navigate('/vacations')}
             />
             <StatCard
               icon={<AlertIcon />}
-              value={0} // Warnings placeholder
-              label={t('dashboard.warnings', 'Warnungen')}
+              value={openSwapsCount + sickTodayCount}
+              label="Offene Vertretungen & Tauschbörse"
               gradient="linear-gradient(135deg, rgba(239,68,68,0.5), rgba(220,38,38,0.3))"
               color="#ef4444"
+              onClick={() => navigate('/shift-swaps')}
             />
           </>
         )}
       </div>
 
-      {/* Today's Assignments Table */}
+      {/* Today's / Upcoming Assignments Table */}
       <div style={{ marginBottom: 32 }}>
         <h2 style={{ marginBottom: 16 }}>
-          {isEmployee ? t('dashboard.myAssignments', 'Meine heutigen Schichten') : t('dashboard.todayAssignments', 'Heutige Schichtzuweisungen')}
+          {isEmployee ? 'Meine Schichten (nächste 7 Tage)' : t('dashboard.todayAssignments', 'Heutige Schichtzuweisungen')}
         </h2>
         {displayAssignments.length === 0 ? (
           <div className="glass-card" style={{ padding: 40, textAlign: 'center' }}>
             <div style={{ fontSize: '2rem', marginBottom: 8, opacity: 0.5 }}>📋</div>
-            <p style={{ color: 'var(--text-tertiary)' }}>{t('dashboard.noShiftsToday', 'Heute keine Schichten geplant')}</p>
+            <p style={{ color: 'var(--text-tertiary)' }}>{isEmployee ? 'Keine Schichten in den nächsten 7 Tagen geplant' : t('dashboard.noShiftsToday', 'Heute keine Schichten geplant')}</p>
           </div>
         ) : (
           <div className="table-container">
             <table>
               <thead>
                 <tr>
+                  {isEmployee && <th>Datum</th>}
                   <th>{t('shiftPlan.employee', 'Mitarbeiter')}</th>
                   <th>{t('shiftTypes.name', 'Schichttyp')}</th>
                   <th>{t('shiftTypes.startTime', 'Beginn')}</th>
@@ -322,6 +353,11 @@ export default function DashboardPage() {
                   const st = shiftTypeMap.get(a.shift_type_id);
                   return (
                     <tr key={a.id}>
+                      {isEmployee && (
+                        <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {new Date(a.assignment_date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                        </td>
+                      )}
                       <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
                         {emp ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || '—' : '—'}
                       </td>
@@ -337,11 +373,11 @@ export default function DashboardPage() {
                           </span>
                         ) : '—'}
                       </td>
-                      <td>{st ? formatTime(st.start_time) : '—'}</td>
-                      <td>{st ? formatTime(st.end_time) : '—'}</td>
+                      <td>{a.actual_start ? formatTime(a.actual_start) : st ? formatTime(st.start_time) : '—'}</td>
+                      <td>{a.actual_end ? formatTime(a.actual_end) : st ? formatTime(st.end_time) : '—'}</td>
                       <td>
-                        <span className={`badge ${a.status === 'planned' ? 'badge-info' : a.status === 'completed' ? 'badge-success' : 'badge-neutral'}`}>
-                          {a.status}
+                        <span className={`badge ${a.status === 'planned' ? 'badge-info' : a.status === 'completed' || a.status === 'confirmed' ? 'badge-success' : a.status === 'sick' ? 'badge-danger' : 'badge-neutral'}`}>
+                          {a.status === 'sick' ? '🤒 Krank' : a.status === 'completed' ? '✓ Abgeschlossen' : a.status === 'confirmed' ? 'Bestätigt' : 'Geplant'}
                         </span>
                       </td>
                       {isEmployee && (
@@ -364,10 +400,10 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Recent Activity / Vacation Requests for Employees */}
+      {/* Recent Activity / Vacation Requests */}
       <div>
         <h2 style={{ marginBottom: 16 }}>
-          {isEmployee ? t('employees.vacations', 'Meine Urlaubsanträge') : t('dashboard.recentActivity', 'Letzte Aktivitäten')}
+          {isEmployee ? t('employees.vacations', 'Meine Urlaubsanträge') : t('dashboard.recentActivity', 'Aktuelle Anträge & Aktivitäten')}
         </h2>
         {isEmployee ? (
           myVacations.length === 0 ? (
@@ -405,10 +441,73 @@ export default function DashboardPage() {
               </table>
             </div>
           )
-        ) : (
+        ) : allVacations.length === 0 && shiftSwaps.length === 0 ? (
           <div className="glass-card" style={{ padding: 40, textAlign: 'center' }}>
             <div style={{ fontSize: '2rem', marginBottom: 8, opacity: 0.5 }}>📊</div>
             <p style={{ color: 'var(--text-tertiary)' }}>{t('dashboard.noActivity', 'Keine aktuellen Aktivitäten')}</p>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Typ</th>
+                  <th>Mitarbeiter</th>
+                  <th>Zeitraum / Schicht</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shiftSwaps.slice(0, 5).map(sw => (
+                  <tr key={`swap-${sw.id}`}>
+                    <td>
+                      <span className="badge badge-info">🔀 Schichttausch</span>
+                    </td>
+                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                      {sw.requesting_employee_name}
+                      {sw.target_employee_name ? ` → ${sw.target_employee_name}` : ''}
+                    </td>
+                    <td>
+                      {new Date(sw.assignment_date).toLocaleDateString('de-DE')} ({sw.shift_type_name})
+                    </td>
+                    <td>
+                      <span className={`badge ${sw.status === 'approved' ? 'badge-success' : sw.status === 'rejected' ? 'badge-danger' : 'badge-warning'}`}>
+                        {sw.status === 'open' ? 'Offen' : sw.status === 'proposed' ? 'Vorgeschlagen' : sw.status === 'approved' ? 'Genehmigt' : 'Abgelehnt'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="btn btn-sm btn-secondary" onClick={() => navigate('/shift-swaps')}>
+                        Öffnen →
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {allVacations.slice(0, 5).map(v => (
+                  <tr key={`vac-${v.id}`}>
+                    <td>
+                      <span className="badge badge-neutral">🌴 Urlaub</span>
+                    </td>
+                    <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                      {v.employee_name}
+                    </td>
+                    <td>
+                      {new Date(v.start_date).toLocaleDateString('de-DE')} – {new Date(v.end_date).toLocaleDateString('de-DE')}
+                    </td>
+                    <td>
+                      <span className={`badge ${v.status === 'approved' ? 'badge-success' : v.status === 'rejected' ? 'badge-danger' : 'badge-warning'}`}>
+                        {v.status === 'approved' ? 'Genehmigt' : v.status === 'rejected' ? 'Abgelehnt' : 'Ausstehend'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="btn btn-sm btn-secondary" onClick={() => navigate('/vacations')}>
+                        Öffnen →
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

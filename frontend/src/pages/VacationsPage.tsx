@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
-import type { Employee, Vacation } from '../types';
+import type { ClosedDay, Employee, Vacation } from '../types';
 
 interface VacationWithEmp extends Vacation {
   employee_name?: string;
@@ -27,6 +27,7 @@ export default function VacationsPage() {
 
   // Manager-specific state
   const [allVacations, setAllVacations] = useState<VacationWithEmp[]>([]);
+  const [closedDays, setClosedDays] = useState<ClosedDay[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -36,6 +37,9 @@ export default function VacationsPage() {
     try {
       setLoading(true);
       setError(null);
+      const closedRes = await api.closedDays.list().catch(() => [] as ClosedDay[]);
+      setClosedDays(closedRes);
+
       if (isEmployee) {
         // 1. Fetch employee profile linked to user email
         const emp = await api.employees.getMe();
@@ -122,6 +126,15 @@ export default function VacationsPage() {
     return new Date(y, (m || 1) - 1, d || 1);
   };
 
+  const closedDateSet = new Set(closedDays.map((c) => c.closed_date));
+
+  const toISODateLocal = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   const calculateDays = (start: string, end: string) => {
     if (!start || !end) return 0;
     const s = parseLocalDate(start);
@@ -131,8 +144,9 @@ export default function VacationsPage() {
     const curr = new Date(s);
     while (curr <= e) {
       const day = curr.getDay();
-      // Count Monday (1) through Friday (5) to match backend count_vacation_days
-      if (day >= 1 && day <= 5) {
+      const iso = toISODateLocal(curr);
+      // Count Monday (1) through Friday (5) and exclude tenant holidays/closed days
+      if (day >= 1 && day <= 5 && !closedDateSet.has(iso)) {
         count += 1;
       }
       curr.setDate(curr.getDate() + 1);
@@ -228,7 +242,7 @@ export default function VacationsPage() {
 
                 {startDate && endDate && (
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    Dauer: <strong>{calculateDays(startDate, endDate)} Kalendertage</strong>
+                    Anzurechnende Urlaubstage: <strong>{calculateDays(startDate, endDate)} Arbeitstage</strong> (ohne Wochenenden & Feiertage)
                   </div>
                 )}
 

@@ -13,8 +13,14 @@
 ### Kernfunktionen
 
 - **Wochen- & Monats-Dienstplanung**
-  - Übersichtliche Wochen- und Monatsansichten mit Drag-&-Drop-/Klick-Zuweisung, Live-Stundenauswertung und Druck-/PDF-Ansicht.
+  - Übersichtliche Wochen- und Monatsansichten mit Klick-Zuweisung, **1-Klick-Vorwochenkopie** (`Vorwoche kopieren`), Live-Stundenauswertung und Druck-/PDF-Ansicht.
+  - **Ist-Arbeitszeiterfassung & Lohnbuchhaltungs-CSV:** Erfassung tatsächlicher Start-/Endzeiten, Pausen und Schichtstatus sowie detaillierter Monats-Export für die Lohnabrechnung (Soll-/Geplante/Ist-Stunden, Nacht-, Sonntags- und Feiertagsstunden, Krankheitstage, Urlaubstage).
+  - **Lese-Ansicht für Mitarbeiter (`viewer`):** Mitarbeiter können den gesamten Team-Dienstplan einsehen oder per Schnellfilter auf ihre eigenen Schichten umschalten.
   - Automatische Kennzeichnung von genehmigten Urlauben, individuellen Sperrtagen, Betriebsferien und gesetzlichen Feiertagen.
+- **Krankmeldung & Automatische Vertretungssuche**
+  - 1-Klick-Krankmeldung direkt im Dienstplan (`🤒 Krankmelden & Vertretung suchen`): markiert den Ausfall im Plan, nimmt die Schicht aus der aktiven Besetzungszählung heraus und erstellt automatisch ein offenes Vertretungsgesuch in der Schichttauschbörse.
+- **Automatischer Feiertags-Generator (alle 16 Bundesländer)**
+  - In den Betriebseinstellungen können alle bundesweiten und landesspezifischen gesetzlichen Feiertage (`BW` bis `TH`, inkl. beweglicher Oster-/Pfingstfeiertage und Buß- und Bettag) für jedes beliebige Jahr per Klick importiert werden.
 - **Integrierte ArbZG- & Regelprüfung**
   - Echtzeit-Validierung bei jeder Schichtzuweisung und beim Schichttausch:
     - Mindestruhezeit zwischen zwei Schichten (standardmäßig **11 Stunden** nach § 5 ArbZG, vorwärts- und rückwärtsgerichtet inkl. Nachtschichten).
@@ -22,19 +28,21 @@
     - Maximale wöchentliche Arbeitszeit (individuelles Wochenstunden-Soll des Mitarbeiters sowie mandantenweite Obergrenze).
     - Prüfung auf genehmigten Urlaub, Sperrtage, Wochentags-Sperrzeiten, Feiertags-Modi und Mindest-/Maximalbesetzung pro Schichttyp.
 - **Automatische Dienstplanbesetzung (Auto-Scheduler)**
-  - Regelbasierter Greedy-Solver zur automatischen Besetzung offener Schichten für frei wählbare Zukunftszeiträume unter Einhaltung aller ArbZG-Vorgaben, Mitarbeiterpräferenzen und gleichmäßiger Stundenauslastung.
+  - Regelbasierter Greedy-Solver zur automatischen Besetzung offener Schichten (inkl. Nachbesetzung bei Krankmeldungen) für frei wählbare Zukunftszeiträume unter Einhaltung aller ArbZG-Vorgaben, Mitarbeiterpräferenzen und gleichmäßiger Stundenauslastung.
 - **Schichttauschbörse & Urlaubsworkflow**
   - Mitarbeiter können eigene Schichten zum Tausch freigeben (offen oder direkt an Kollegen adressiert) und Schichten übernehmen; Freigabe erfolgt durch Schichtleiter/Administratoren inkl. ArbZG-Prüfung.
-  - Digitaler Urlaubsantrag mit automatischer Werktagsberechnung (Mo–Fr), Resturlaubskonto und E-Mail-Benachrichtigung bei Antragstellung, Genehmigung oder Ablehnung.
+  - Digitaler Urlaubsantrag mit **feiertagsbereinigter** Werktagsberechnung (Mo–Fr abzüglich gesetzlicher Feiertage/Betriebsschließungen), Resturlaubskonto und E-Mail-Benachrichtigung bei Antragstellung, Genehmigung oder Ablehnung.
 - **Kalender-Abonnement (iCal / WebCal)**
   - Persönlicher ICS-Download sowie kryptografisch signierte Langzeit-Abo-Links (`webcal://` / `https://`) für die Live-Synchronisation in Apple Kalender, Google Calendar, Outlook und Smartphones.
-- **Mandantenfähigkeit (Multi-Tenancy) & Rollenmodell**
+- **Mandantenfähigkeit (Multi-Tenancy), Sicherheit & Rollenmodell**
   - Strikte Mandantentrennung bis auf Datenbankebene durch PostgreSQL Row-Level Security (`RLS`).
+  - Öffentliche Selbstregistrierung standardmäßig deaktiviert (`ALLOW_PUBLIC_REGISTRATION=false`); neue Mandanten werden kontrolliert über das Super-Admin-Panel bereitgestellt.
+  - Integrierte Passwort-Selbstverwaltung (`🔑 Passwort ändern`) für alle Benutzerrollen.
   - Vierstufiges Berechtigungskonzept:
     - `super_admin`: Mandantenverwaltung und Festlegung von Mitarbeiter-Kontingenten (`max_employees`).
     - `admin`: Vollzugriff innerhalb des eigenen Betriebs (Mitarbeiter, Konten, Rollen, Arbeitszeitregeln, Dienstpläne).
     - `planner`: Schichtleiter-Zugriff für Dienstpläne, Urlaubsfreigaben und Schichttausch-Genehmigungen.
-    - `viewer`: Mitarbeiter-Self-Service (eigene Schichten, Kalender-Abo, Urlaubsanträge, Sperrtage, Schichttauschbörse).
+    - `viewer`: Mitarbeiter-Self-Service (Team-/Eigener Dienstplan im Lesemodus, 7-Tage-Vorschau im Dashboard, Kalender-Abo, Urlaubsanträge, Sperrtage, Schichttauschbörse).
 
 ---
 

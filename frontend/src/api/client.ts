@@ -12,6 +12,7 @@ import type {
   UpdateShiftTypeRequest,
   ShiftAssignment,
   CreateAssignmentRequest,
+  UpdateAssignmentRequest,
   BlockedDay,
   CreateBlockedDayRequest,
   Vacation,
@@ -169,6 +170,12 @@ const auth = {
     }),
 
   me: () => request<User>('/auth/me'),
+
+  changePassword: (data: { current_password: string; new_password: string }) =>
+    request<{ success: boolean; message: string }>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 // ---------------------------------------------------------------------------
@@ -324,7 +331,7 @@ const assignments = {
       body: JSON.stringify(data),
     }),
 
-  update: (id: string, data: Partial<CreateAssignmentRequest>) =>
+  update: (id: string, data: UpdateAssignmentRequest) =>
     request<ShiftAssignment>(`/assignments/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -339,6 +346,17 @@ const assignments = {
     request<{ success: boolean; message: string }>('/assignments/auto-schedule', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  copyWeek: (data: { source_monday: string; target_monday: string }) =>
+    request<{ success: boolean; copied_count: number; skipped_count: number }>('/assignments/copy-week', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  markSick: (id: string) =>
+    request<ShiftAssignment>(`/assignments/${id}/mark-sick`, {
+      method: 'POST',
     }),
 };
 
@@ -420,6 +438,12 @@ const closedDays = {
   delete: (id: string) =>
     request<{ success: boolean; message: string }>(`/closed-days/${id}`, {
       method: 'DELETE',
+    }),
+
+  generateHolidays: (data: { year: number; state: string }) =>
+    request<{ success: boolean; created_count: number; skipped_count: number }>('/closed-days/generate-holidays', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 };
 

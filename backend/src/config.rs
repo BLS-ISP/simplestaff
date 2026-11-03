@@ -18,6 +18,7 @@ pub struct Config {
     pub smtp_from: Option<String>,
     pub smtp_enabled: bool,
     pub app_base_url: String,
+    pub allow_public_registration: bool,
 }
 
 impl Config {
@@ -39,6 +40,9 @@ impl Config {
             .unwrap_or_else(|_| smtp_host.is_some());
         let app_base_url = env::var("APP_BASE_URL")
             .unwrap_or_else(|_| "https://time.bls-isp.net".to_string());
+        let allow_public_registration = env::var("ALLOW_PUBLIC_REGISTRATION")
+            .map(|v| v.eq_ignore_ascii_case("true") || v == "1" || v.eq_ignore_ascii_case("yes"))
+            .unwrap_or(false);
 
         Self {
             database_url: env::var("DATABASE_URL")
@@ -66,6 +70,7 @@ impl Config {
             smtp_from,
             smtp_enabled,
             app_base_url,
+            allow_public_registration,
         }
     }
 }
