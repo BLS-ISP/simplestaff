@@ -84,6 +84,24 @@ fn require_admin(auth: &AuthUser) -> Result<(), AppError> {
     }
 }
 
+async fn find_user_by_email_ci(
+    txn: &sea_orm::DatabaseTransaction,
+    tenant_id: Uuid,
+    email: &str,
+) -> Result<Option<user::Model>, AppError> {
+    let trimmed = email.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let users = user::Entity::find()
+        .filter(user::Column::TenantId.eq(tenant_id))
+        .all(txn)
+        .await?;
+    Ok(users
+        .into_iter()
+        .find(|u| u.email.trim().eq_ignore_ascii_case(trimmed)))
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -400,28 +418,22 @@ async fn update_employee(
             // Synchronize linked user account if one exists with the previous email
             if let Some(ref prev_email) = old_email {
                 if !prev_email.trim().is_empty() {
-                    if let Some(linked_user) = user::Entity::find()
-                        .filter(user::Column::TenantId.eq(tenant_id))
-                        .filter(user::Column::Email.eq(prev_email))
-                        .one(txn)
-                        .await?
-                    {
+                    if let Some(linked_user) = find_user_by_email_ci(txn, tenant_id, prev_email).await? {
                         let mut active_u: user::ActiveModel = linked_user.clone().into();
                         let mut user_changed = false;
 
                         if let Some(ref new_email) = body.email {
                             let trimmed = new_email.trim();
-                            if !trimmed.is_empty() && trimmed != prev_email.trim() {
-                                let collision = user::Entity::find()
-                                    .filter(user::Column::TenantId.eq(tenant_id))
-                                    .filter(user::Column::Email.eq(trimmed))
-                                    .one(txn)
-                                    .await?;
+                            if !trimmed.is_empty() && !trimmed.eq_ignore_ascii_case(prev_email.trim()) {
+                                let collision = find_user_by_email_ci(txn, tenant_id, trimmed).await?;
                                 if collision.is_some() {
                                     return Err(AppError::Conflict(
                                         "Für die neue E-Mail-Adresse existiert bereits ein Benutzerkonto.".to_string(),
                                     ));
                                 }
+                                active_u.email = Set(trimmed.to_string());
+                                user_changed = true;
+                            } else if !trimmed.is_empty() && trimmed != linked_user.email {
                                 active_u.email = Set(trimmed.to_string());
                                 user_changed = true;
                             }
@@ -493,12 +505,7 @@ async fn delete_employee(
 
             if let Some(ref emp_email) = existing.email {
                 if !emp_email.trim().is_empty() {
-                    if let Some(linked_user) = user::Entity::find()
-                        .filter(user::Column::TenantId.eq(tenant_id))
-                        .filter(user::Column::Email.eq(emp_email))
-                        .one(txn)
-                        .await?
-                    {
+                    if let Some(linked_user) = find_user_by_email_ci(txn, tenant_id, emp_email).await? {
                         if linked_user.role == "admin" && linked_user.is_active {
                             let admin_count = user::Entity::find()
                                 .filter(user::Column::TenantId.eq(tenant_id))
@@ -661,11 +668,7 @@ async fn get_employee_user_account(
                 });
             }
 
-            let u = user::Entity::find()
-                .filter(user::Column::TenantId.eq(tenant_id))
-                .filter(user::Column::Email.eq(&emp_email))
-                .one(txn)
-                .await?;
+            let u = find_user_by_email_ci(txn, tenant_id, &emp_email).await?;
 
             if let Some(user_model) = u {
                 Ok(EmployeeUserAccountResponse {
@@ -746,12 +749,8 @@ async fn create_employee_user(
                 return Err(AppError::BadRequest("Mitarbeiter hat keine E-Mail-Adresse hinterlegt.".to_string()));
             }
 
-            // Check if user account already exists
-            let existing = user::Entity::find()
-                .filter(user::Column::TenantId.eq(tenant_id))
-                .filter(user::Column::Email.eq(&emp_email))
-                .one(txn)
-                .await?;
+            // Check if user account already exists (case-insensitive)
+            let existing = find_user_by_email_ci(txn, tenant_id, &emp_email).await?;
             if existing.is_some() {
                 return Err(AppError::Conflict("Für diese E-Mail-Adresse existiert bereits ein Benutzerkonto.".to_string()));
             }
@@ -759,11 +758,12 @@ async fn create_employee_user(
             let first = emp.first_name.clone().unwrap_or_default();
             let last = emp.last_name.clone().unwrap_or_default();
             let full_name = format!("{} {}", first, last).trim().to_string();
+            let clean_email = emp_email.trim().to_string();
 
             let new_u = user::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tenant_id: Set(tenant_id),
-                email: Set(emp_email.clone()),
+                email: Set(clean_email.clone()),
                 password_hash: Set(password_hash),
                 first_name: Set(first),
                 last_name: Set(last),
@@ -774,7 +774,7 @@ async fn create_employee_user(
             };
 
             let inserted = new_u.insert(txn).await?;
-            Ok((inserted, full_name, emp_email))
+            Ok((inserted, full_name, clean_email))
         })
     })
     .await?;
@@ -824,10 +824,7 @@ async fn update_employee_user_account(
             let last = emp.last_name.clone().unwrap_or_default();
             let full_name = format!("{} {}", first, last).trim().to_string();
 
-            let existing_user = user::Entity::find()
-                .filter(user::Column::TenantId.eq(tenant_id))
-                .filter(user::Column::Email.eq(&emp_email))
-                .one(txn)
+            let existing_user = find_user_by_email_ci(txn, tenant_id, &emp_email)
                 .await?
                 .ok_or_else(|| AppError::NotFound("Zu diesem Mitarbeiter existiert kein Benutzerkonto.".to_string()))?;
 

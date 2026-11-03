@@ -240,11 +240,16 @@ export default function DashboardPage() {
     : assignments;
 
   const todayShiftsCount = isEmployee && myEmployee
-    ? assignments.filter(a => a.employee_id === myEmployee.id).length
-    : assignments.length;
+    ? assignments.filter(a => a.employee_id === myEmployee.id && a.status !== 'sick').length
+    : assignments.filter(a => a.status !== 'sick').length;
   const activeEmployees = employees.filter(e => e.is_active).length;
+  const activeSwapAssignmentIds = new Set(
+    shiftSwaps.filter(s => s.status === 'open' || s.status === 'proposed').map(s => s.assignment_id)
+  );
   const openSwapsCount = shiftSwaps.filter(s => s.status === 'open' || s.status === 'proposed').length;
-  const sickTodayCount = assignments.filter(a => a.status === 'sick').length;
+  const sickTodayCount = assignments.filter(
+    a => a.status === 'sick' && !activeSwapAssignmentIds.has(a.id)
+  ).length;
 
   return (
     <div className="animate-slide-up">
@@ -355,7 +360,7 @@ export default function DashboardPage() {
                     <tr key={a.id}>
                       {isEmployee && (
                         <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {new Date(a.assignment_date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                          {new Date(a.assignment_date + 'T00:00:00').toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}
                         </td>
                       )}
                       <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
@@ -382,13 +387,17 @@ export default function DashboardPage() {
                       </td>
                       {isEmployee && (
                         <td style={{ textAlign: 'right' }}>
-                          <button
-                            className="btn btn-sm btn-neutral"
-                            onClick={() => navigate('/shift-swaps')}
-                            style={{ padding: '2px 8px', fontSize: '0.75rem' }}
-                          >
-                            🔄 Tauschen
-                          </button>
+                          {a.status !== 'sick' ? (
+                            <button
+                              className="btn btn-sm btn-neutral"
+                              onClick={() => navigate('/shift-swaps')}
+                              style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                            >
+                              🔄 Tauschen
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                          )}
                         </td>
                       )}
                     </tr>
@@ -426,9 +435,9 @@ export default function DashboardPage() {
                   {myVacations.slice(0, 5).map(v => (
                     <tr key={v.id}>
                       <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
-                        {new Date(v.start_date).toLocaleDateString('de-DE')}
+                        {new Date(v.start_date + 'T00:00:00').toLocaleDateString('de-DE')}
                       </td>
-                      <td>{new Date(v.end_date).toLocaleDateString('de-DE')}</td>
+                      <td>{new Date(v.end_date + 'T00:00:00').toLocaleDateString('de-DE')}</td>
                       <td style={{ color: 'var(--text-secondary)' }}>{v.notes || '—'}</td>
                       <td>
                         <span className={`badge ${v.status === 'approved' ? 'badge-success' : v.status === 'rejected' ? 'badge-danger' : 'badge-warning'}`}>
@@ -469,7 +478,7 @@ export default function DashboardPage() {
                       {sw.target_employee_name ? ` → ${sw.target_employee_name}` : ''}
                     </td>
                     <td>
-                      {new Date(sw.assignment_date).toLocaleDateString('de-DE')} ({sw.shift_type_name})
+                      {new Date(sw.assignment_date + 'T00:00:00').toLocaleDateString('de-DE')} ({sw.shift_type_name})
                     </td>
                     <td>
                       <span className={`badge ${sw.status === 'approved' ? 'badge-success' : sw.status === 'rejected' ? 'badge-danger' : 'badge-warning'}`}>
@@ -492,7 +501,7 @@ export default function DashboardPage() {
                       {v.employee_name}
                     </td>
                     <td>
-                      {new Date(v.start_date).toLocaleDateString('de-DE')} – {new Date(v.end_date).toLocaleDateString('de-DE')}
+                      {new Date(v.start_date + 'T00:00:00').toLocaleDateString('de-DE')} – {new Date(v.end_date + 'T00:00:00').toLocaleDateString('de-DE')}
                     </td>
                     <td>
                       <span className={`badge ${v.status === 'approved' ? 'badge-success' : v.status === 'rejected' ? 'badge-danger' : 'badge-warning'}`}>

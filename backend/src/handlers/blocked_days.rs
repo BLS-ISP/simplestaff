@@ -130,6 +130,19 @@ pub async fn create_blocked_day(
         Box::pin(async move {
             verify_employee_access(txn, &auth_clone, employee_id).await?;
 
+            // Prevent duplicate blocked day for the same employee on the same date
+            let existing = BlockedDay::find()
+                .filter(Column::TenantId.eq(tenant_id))
+                .filter(Column::EmployeeId.eq(employee_id))
+                .filter(Column::BlockedDate.eq(payload.blocked_date))
+                .one(txn)
+                .await?;
+            if existing.is_some() {
+                return Err(AppError::Conflict(
+                    "Für dieses Datum ist bereits ein Sperrtag eingetragen.".to_string(),
+                ));
+            }
+
             let active_model = ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tenant_id: Set(tenant_id),

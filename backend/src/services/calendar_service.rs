@@ -43,8 +43,9 @@ pub fn generate_ics(
 
     for (assignment, shift) in assignments {
         let date = assignment.assignment_date;
-        let start_time = shift.start_time;
-        let end_time = shift.end_time;
+        let start_time = assignment.actual_start.unwrap_or(shift.start_time);
+        let end_time = assignment.actual_end.unwrap_or(shift.end_time);
+        let break_minutes = assignment.actual_break_minutes.unwrap_or(shift.break_minutes);
 
         // If end_time <= start_time the shift crosses midnight → end date is
         // the next day.
@@ -74,14 +75,32 @@ pub fn generate_ics(
             end_time.second(),
         );
 
+        let utc_stamp = assignment.updated_at.with_timezone(&chrono::Utc);
+        let dtstamp = format!(
+            "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+            utc_stamp.year(),
+            utc_stamp.month(),
+            utc_stamp.day(),
+            utc_stamp.hour(),
+            utc_stamp.minute(),
+            utc_stamp.second(),
+        );
+
         let status = match assignment.status.as_str() {
-            "planned" | "confirmed" => "CONFIRMED",
+            "planned" | "confirmed" | "completed" => "CONFIRMED",
             _ => "TENTATIVE",
+        };
+
+        let description = match assignment.notes.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
+            Some(note) => format!("Pause: {} Min.\\nNotiz: {}", break_minutes, ics_escape(note)),
+            None => format!("Pause: {} Min.", break_minutes),
         };
 
         ics.push_str("BEGIN:VEVENT");
         ics.push_str(crlf);
         ics.push_str(&format!("UID:{}@simplestaff.local", assignment.id));
+        ics.push_str(crlf);
+        ics.push_str(&format!("DTSTAMP:{}", dtstamp));
         ics.push_str(crlf);
         ics.push_str(&format!("DTSTART:{}", dtstart));
         ics.push_str(crlf);
@@ -89,10 +108,7 @@ pub fn generate_ics(
         ics.push_str(crlf);
         ics.push_str(&format!("SUMMARY:{}", ics_escape(&shift.name)));
         ics.push_str(crlf);
-        ics.push_str(&format!(
-            "DESCRIPTION:Pause: {} Min.",
-            shift.break_minutes
-        ));
+        ics.push_str(&format!("DESCRIPTION:{}", description));
         ics.push_str(crlf);
         ics.push_str(&format!("STATUS:{}", status));
         ics.push_str(crlf);

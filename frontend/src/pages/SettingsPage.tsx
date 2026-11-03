@@ -762,7 +762,7 @@ export default function SettingsPage() {
                 closedDays.map((cd) => (
                   <tr key={cd.id}>
                     <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                      {new Date(cd.closed_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      {new Date(cd.closed_date + 'T00:00:00').toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                     </td>
                     <td>{cd.description}</td>
                     <td>

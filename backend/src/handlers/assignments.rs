@@ -270,6 +270,26 @@ pub async fn update_assignment(
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("Assignment {id} not found")))?;
 
+            let target_emp_id = body.employee_id.unwrap_or(existing.employee_id);
+            let target_date = body.assignment_date.unwrap_or(existing.assignment_date);
+            let target_status = body.status.as_deref().unwrap_or(&existing.status).to_string();
+
+            if target_status != "sick" {
+                let duplicate = ShiftAssignment::find()
+                    .filter(Column::TenantId.eq(tenant_id))
+                    .filter(Column::EmployeeId.eq(target_emp_id))
+                    .filter(Column::AssignmentDate.eq(target_date))
+                    .filter(Column::Status.ne("sick"))
+                    .filter(Column::Id.ne(id))
+                    .one(txn)
+                    .await?;
+                if duplicate.is_some() {
+                    return Err(AppError::Conflict(
+                        "Dieser Mitarbeiter ist an diesem Tag bereits für eine Schicht eingeteilt.".to_string(),
+                    ));
+                }
+            }
+
             let mut active: ActiveModel = existing.into();
 
             if let Some(employee_id) = body.employee_id {
@@ -337,6 +357,13 @@ pub async fn delete_assignment(
 
     execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
+            // Remove any associated shift swap requests first
+            crate::models::shift_swap::Entity::delete_many()
+                .filter(crate::models::shift_swap::Column::TenantId.eq(tenant_id))
+                .filter(crate::models::shift_swap::Column::AssignmentId.eq(id))
+                .exec(txn)
+                .await?;
+
             let result = ShiftAssignment::delete_many()
                 .filter(Column::Id.eq(id))
                 .filter(Column::TenantId.eq(tenant_id))
