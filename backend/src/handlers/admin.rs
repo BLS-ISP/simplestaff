@@ -3,7 +3,7 @@ use axum::{
     routing::{get, put},
     Json, Router,
 };
-use sea_orm::{ActiveModelTrait, EntityTrait, Set, TransactionTrait};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use argon2::{
@@ -121,6 +121,17 @@ pub async fn create_tenant(
 
     let txn = state.db.begin().await?;
 
+    // Check for duplicate tenant slug
+    let existing_slug = tenant::Entity::find()
+        .filter(tenant::Column::Slug.eq(payload.slug.trim()))
+        .one(&txn)
+        .await?;
+    if existing_slug.is_some() {
+        return Err(AppError::Conflict(
+            "Ein Betrieb mit diesem Slug existiert bereits.".to_string(),
+        ));
+    }
+
     // Create the tenant
     let new_tenant = tenant::Model {
         id: tenant_id,
@@ -180,6 +191,17 @@ pub async fn update_tenant(
         .one(&state.db)
         .await?
         .ok_or_else(|| AppError::NotFound("Betrieb nicht gefunden".to_string()))?;
+
+    let slug_collision = tenant::Entity::find()
+        .filter(tenant::Column::Slug.eq(payload.slug.trim()))
+        .filter(tenant::Column::Id.ne(id))
+        .one(&state.db)
+        .await?;
+    if slug_collision.is_some() {
+        return Err(AppError::Conflict(
+            "Ein anderer Betrieb verwendet bereits diesen Slug.".to_string(),
+        ));
+    }
 
     let mut settings = existing.settings.clone();
     if !settings.is_object() {

@@ -33,19 +33,25 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
 
-        {/* Protected Dashboard/Management Routes (for tenant members/managers) */}
-        <Route element={<ProtectedRoute allowedRoles={['admin', 'planner', 'viewer']} />}>
+        {/* Protected Dashboard & Self-Service Routes (all authenticated tenant users) */}
+        <Route element={<ProtectedRoute allowedRoles={['admin', 'planner', 'viewer', 'super_admin']} />}>
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/vacations" element={<VacationsPage />} />
+            <Route path="/shift-swaps" element={<ShiftSwapsPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+          </Route>
+        </Route>
+
+        {/* Protected Management Routes (managers and admins only) */}
+        <Route element={<ProtectedRoute allowedRoles={['admin', 'planner', 'super_admin']} />}>
+          <Route element={<Layout />}>
             <Route path="/employees" element={<EmployeesPage />} />
             <Route path="/employees/:id" element={<EmployeeDetailPage />} />
             <Route path="/shift-types" element={<ShiftTypesPage />} />
             <Route path="/shift-plan" element={<ShiftPlanPage />} />
             <Route path="/shift-plan/month" element={<ShiftPlanMonthPage />} />
-            <Route path="/vacations" element={<VacationsPage />} />
-            <Route path="/shift-swaps" element={<ShiftSwapsPage />} />
-            <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>

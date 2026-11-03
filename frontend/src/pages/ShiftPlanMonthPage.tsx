@@ -109,8 +109,10 @@ export default function ShiftPlanMonthPage() {
     for (const [empId, vacs] of Object.entries(vacationMap)) {
       for (const v of vacs) {
         if (v.status !== 'approved') continue;
-        const start = new Date(v.start_date);
-        const end = new Date(v.end_date);
+        const [sy, sm, sd] = v.start_date.split('-').map(Number);
+        const [ey, em, ed] = v.end_date.split('-').map(Number);
+        const start = new Date(sy, (sm || 1) - 1, sd || 1);
+        const end = new Date(ey, (em || 1) - 1, ed || 1);
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
           set.add(`${empId}|${toISODateString(d)}`);
         }
@@ -999,15 +1001,17 @@ export default function ShiftPlanMonthPage() {
               </p>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)' }}>
-                {validationWarnings.map((warning, index) => (
+                {validationWarnings.map((warning, index) => {
+                  const isCritical = warning.severity.toLowerCase() === 'critical';
+                  return (
                   <div
                     key={index}
                     className="glass-card"
                     style={{
                       padding: 'var(--space-sm) var(--space-md)',
-                      background: warning.severity === 'Critical' ? 'var(--danger-bg)' : 'var(--warning-bg)',
-                      borderColor: warning.severity === 'Critical' ? 'var(--danger)' : 'var(--warning)',
-                      color: warning.severity === 'Critical' ? 'var(--danger)' : 'var(--warning-text, var(--text-primary))',
+                      background: isCritical ? 'var(--danger-bg)' : 'var(--warning-bg)',
+                      borderColor: isCritical ? 'var(--danger)' : 'var(--warning)',
+                      color: isCritical ? 'var(--danger)' : 'var(--warning-text, var(--text-primary))',
                       fontSize: '0.85rem',
                       display: 'flex',
                       alignItems: 'flex-start',
@@ -1015,7 +1019,7 @@ export default function ShiftPlanMonthPage() {
                     }}
                   >
                     <span style={{ fontSize: '1.1rem' }}>
-                      {warning.severity === 'Critical' ? '🛑' : '⚠️'}
+                      {isCritical ? '🛑' : '⚠️'}
                     </span>
                     <div>
                       <div style={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.75rem', marginBottom: '2px' }}>
@@ -1026,7 +1030,8 @@ export default function ShiftPlanMonthPage() {
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               
               <p style={{ margin: 0, color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
@@ -1050,7 +1055,7 @@ export default function ShiftPlanMonthPage() {
                 className="btn btn-primary"
                 type="button"
                 style={{
-                  background: validationWarnings.some(w => w.severity === 'Critical') ? 'var(--danger)' : 'var(--accent)',
+                  background: validationWarnings.some(w => w.severity.toLowerCase() === 'critical') ? 'var(--danger)' : 'var(--accent)',
                 }}
                 onClick={() => {
                   if (proposedAssignment) {

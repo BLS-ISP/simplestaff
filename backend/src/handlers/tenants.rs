@@ -146,8 +146,19 @@ pub async fn update_tenant_settings(
                 .await?
                 .ok_or_else(|| AppError::NotFound("Tenant not found".to_string()))?;
 
+            let existing_max_employees = existing.settings.get("max_employees").cloned();
+
+            let mut new_settings = payload.settings;
+            if let Some(obj) = new_settings.as_object_mut() {
+                if let Some(max_emp) = existing_max_employees {
+                    obj.insert("max_employees".to_string(), max_emp);
+                } else {
+                    obj.remove("max_employees");
+                }
+            }
+
             let mut active: tenant::ActiveModel = existing.into();
-            active.settings = Set(payload.settings);
+            active.settings = Set(new_settings);
             active.updated_at = Set(chrono::Utc::now().into());
 
             let updated = active.update(txn).await?;

@@ -133,13 +133,14 @@ pub async fn validate_assignment(
         });
     }
 
-    // ── 3. 11-hour rest period violation ──────────────────────────────────
+    // ── 3. 11-hour rest period violation (previous day & next day) ────────
     let min_rest_hours = tenant_settings
         .get("min_rest_hours")
         .and_then(|v| v.as_f64())
         .unwrap_or(11.0);
 
     let previous_day = *assignment_date - Duration::days(1);
+    let next_day = *assignment_date + Duration::days(1);
 
     let prev_day_assignments = shift_assignment::Entity::find()
         .filter(
@@ -152,6 +153,8 @@ pub async fn validate_assignment(
         .await?;
 
     let new_start = shift_type.start_time;
+    let new_end = shift_type.end_time;
+    let new_is_overnight = new_end < new_start;
 
     for prev_assignment in &prev_day_assignments {
         let prev_shift = shift_type::Entity::find()
@@ -166,17 +169,9 @@ pub async fn validate_assignment(
 
         // Calculate hours between prev shift end and new shift start.
         let rest_minutes = if prev_is_overnight {
-            // Night shift: started on previous day, ended on assignment_date at prev_end.
-            // Rest is the gap between prev_end and new_start on assignment_date.
             let diff = time_diff_minutes(prev_end, new_start);
-            if diff > 0 {
-                diff
-            } else {
-                0
-            }
+            if diff > 0 { diff } else { 0 }
         } else {
-            // Day shift: ended on previous day at prev_end.
-            // Rest is from prev_end to midnight (yesterday) + midnight to new_start (today).
             let minutes_until_midnight = minutes_from_time_to_midnight(prev_end);
             let minutes_from_midnight = minutes_from_midnight_to_time(new_start);
             minutes_until_midnight + minutes_from_midnight
@@ -204,7 +199,58 @@ pub async fn validate_assignment(
         }
     }
 
-    // ── 4. Max daily hours exceeded ───────────────────────────────────────
+    let next_day_assignments = shift_assignment::Entity::find()
+        .filter(
+            Condition::all()
+                .add(shift_assignment::Column::TenantId.eq(*tenant_id))
+                .add(shift_assignment::Column::EmployeeId.eq(*employee_id))
+                .add(shift_assignment::Column::AssignmentDate.eq(next_day)),
+        )
+        .all(txn)
+        .await?;
+
+    for next_assignment in &next_day_assignments {
+        let next_shift = shift_type::Entity::find()
+            .filter(shift_type::Column::Id.eq(next_assignment.shift_type_id))
+            .filter(shift_type::Column::TenantId.eq(*tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Next shift type not found".to_string()))?;
+
+        let next_start = next_shift.start_time;
+
+        let rest_minutes = if new_is_overnight {
+            let diff = time_diff_minutes(new_end, next_start);
+            if diff > 0 { diff } else { 0 }
+        } else {
+            let minutes_until_midnight = minutes_from_time_to_midnight(new_end);
+            let minutes_from_midnight = minutes_from_midnight_to_time(next_start);
+            minutes_until_midnight + minutes_from_midnight
+        };
+
+        let rest_hours = rest_minutes as f64 / 60.0;
+
+        if rest_hours < min_rest_hours {
+            warnings.push(ValidationWarning {
+                code: "REST_PERIOD_VIOLATION".to_string(),
+                message_de: format!(
+                    "Ruhezeit von {:.1}h zum Folgetag unterschreitet die Mindestruhezeit von {:.0}h (Folgeschicht beginnt um {}).",
+                    rest_hours,
+                    min_rest_hours,
+                    next_start.format("%H:%M")
+                ),
+                message_en: format!(
+                    "Rest period of {:.1}h before next day shift is less than the minimum {:.0}h (next day shift starts at {}).",
+                    rest_hours,
+                    min_rest_hours,
+                    next_start.format("%H:%M")
+                ),
+                severity: WarningSeverity::Warning,
+            });
+        }
+    }
+
+    // ── 4. Max daily hours exceeded & same-day shift overlap ──────────────
     let max_daily_hours = tenant_settings
         .get("max_daily_hours")
         .and_then(|v| v.as_f64())
@@ -260,7 +306,14 @@ pub async fn validate_assignment(
         .await?
         .ok_or_else(|| AppError::NotFound("Employee not found".to_string()))?;
 
-    let weekly_hours_limit = employee_record.weekly_hours as f64;
+    let emp_weekly_hours = employee_record.weekly_hours as f64;
+    let tenant_max_weekly_hours = tenant_settings
+        .get("max_weekly_hours")
+        .and_then(|v| v.as_f64());
+    let weekly_hours_limit = match tenant_max_weekly_hours {
+        Some(t_max) => emp_weekly_hours.min(t_max),
+        None => emp_weekly_hours,
+    };
 
     // Calculate Monday–Sunday of the assignment week
     let weekday = assignment_date.weekday().num_days_from_monday(); // Mon=0 .. Sun=6
@@ -504,8 +557,8 @@ pub async fn validate_assignment(
 }
 
 /// Calculates the effective duration of a shift in hours, accounting for night shifts
-/// and automatic break deductions based on tenant settings.
-fn calculate_shift_duration(
+/// and automatic break deductions based on tenant settings (falling back to shift.break_minutes).
+pub fn calculate_shift_duration(
     shift: &shift_type::Model,
     tenant_settings: &serde_json::Value,
 ) -> f64 {
@@ -524,14 +577,19 @@ fn calculate_shift_duration(
 
     let gross_hours = total_minutes as f64 / 60.0;
 
-    // Apply break rules from tenant settings
-    let break_minutes = calculate_break_minutes(gross_hours, tenant_settings);
+    // Apply break rules from tenant settings, falling back to shift.break_minutes
+    let rule_break_minutes = calculate_break_minutes(gross_hours, tenant_settings);
+    let break_minutes = if rule_break_minutes > 0 {
+        rule_break_minutes
+    } else {
+        shift.break_minutes.max(0) as i64
+    };
 
-    gross_hours - (break_minutes as f64 / 60.0)
+    (gross_hours - (break_minutes as f64 / 60.0)).max(0.0)
 }
 
 /// Determines the break duration in minutes based on the gross working hours
-/// and the tenant's break rules.
+/// and the tenant's break rules (supports both `from_hours` and `min_hours` keys).
 fn calculate_break_minutes(gross_hours: f64, tenant_settings: &serde_json::Value) -> i64 {
     let break_rules = tenant_settings
         .get("break_rules")
@@ -542,16 +600,18 @@ fn calculate_break_minutes(gross_hours: f64, tenant_settings: &serde_json::Value
     if let Some(rules) = break_rules {
         for rule in rules {
             let min_hours = rule
-                .get("min_hours")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
+                .get("from_hours")
+                .or_else(|| rule.get("min_hours"))
+                .and_then(|v| v.as_f64());
             let minutes = rule
                 .get("break_minutes")
                 .and_then(|v| v.as_i64())
                 .unwrap_or(0);
 
-            if gross_hours >= min_hours && minutes > break_minutes {
-                break_minutes = minutes;
+            if let Some(threshold) = min_hours {
+                if gross_hours >= threshold && minutes > break_minutes {
+                    break_minutes = minutes;
+                }
             }
         }
     }

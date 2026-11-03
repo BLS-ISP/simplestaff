@@ -6,27 +6,14 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::errors::AppError;
+use crate::middleware::tenant::set_tenant_context;
 use crate::models::{
     closed_day, employee, employee_blocked_day, employee_vacation,
     shift_assignment::{self, ActiveModel, Entity as ShiftAssignment},
+    shift_swap,
     shift_type::{self, Entity as ShiftType},
 };
-
-fn calculate_duration(st: &shift_type::Model) -> f64 {
-    let start = st.start_time;
-    let end = st.end_time;
-
-    let duration_secs = if end >= start {
-        (end - start).num_seconds()
-    } else {
-        (chrono::NaiveTime::from_hms_opt(23, 59, 59).unwrap() - start).num_seconds() + 1
-            + (end - chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap()).num_seconds()
-    };
-
-    let hours = duration_secs as f64 / 3600.0;
-    let break_hours = st.break_minutes as f64 / 60.0;
-    (hours - break_hours).max(0.0)
-}
+use crate::services::validation_service::calculate_shift_duration;
 
 fn calculate_rest(prev_start: NaiveTime, prev_end: NaiveTime, next_start: NaiveTime) -> f64 {
     let is_overnight = prev_end < prev_start;
@@ -54,6 +41,7 @@ struct TempAssignment {
     start_time: NaiveTime,
     end_time: NaiveTime,
     duration: f64,
+    is_new: bool,
 }
 
 pub async fn run_auto_schedule(
@@ -73,6 +61,10 @@ pub async fn run_auto_schedule(
         .and_then(|s| s.get("max_daily_hours"))
         .and_then(|v| v.as_f64())
         .unwrap_or(10.0);
+
+    let tenant_max_weekly_hours = tenant_settings
+        .and_then(|s| s.get("max_weekly_hours"))
+        .and_then(|v| v.as_f64());
 
     let min_rest_hours = tenant_settings
         .and_then(|s| s.get("min_rest_hours"))
@@ -120,36 +112,52 @@ pub async fn run_auto_schedule(
         .all(db)
         .await?;
 
-    // 4. Determine calendar weeks for the range to load existing border assignments
+    // 4. Determine calendar weeks for the range (plus 1 border day before/after) to load existing assignments
     let weekday_start = start_date.weekday().num_days_from_monday();
-    let query_start = start_date - Duration::days(weekday_start as i64);
+    let query_start = (start_date - Duration::days(weekday_start as i64)).min(start_date - Duration::days(1));
 
     let weekday_end = end_date.weekday().num_days_from_monday();
-    let query_end = end_date + Duration::days((6 - weekday_end) as i64);
+    let query_end = (end_date + Duration::days((6 - weekday_end) as i64)).max(end_date + Duration::days(1));
 
-    let existing_assignments = ShiftAssignment::find()
+    let all_range_assignments = ShiftAssignment::find()
         .filter(shift_assignment::Column::TenantId.eq(*tenant_id))
         .filter(shift_assignment::Column::AssignmentDate.gte(query_start))
         .filter(shift_assignment::Column::AssignmentDate.lte(query_end))
-        .filter(
-            shift_assignment::Column::AssignmentDate.lt(start_date)
-                .or(shift_assignment::Column::AssignmentDate.gt(end_date)),
-        )
         .all(db)
         .await?;
 
-    // 5. Build in-memory assignments tracker
+    let active_swaps = shift_swap::Entity::find()
+        .filter(shift_swap::Column::TenantId.eq(*tenant_id))
+        .filter(shift_swap::Column::Status.ne("cancelled"))
+        .all(db)
+        .await?;
+    let swapped_assignment_ids: std::collections::HashSet<Uuid> =
+        active_swaps.into_iter().map(|s| s.assignment_id).collect();
+
+    // 5. Build in-memory assignments tracker (border assignments + preserved assignments inside range)
     let mut assignments: Vec<TempAssignment> = Vec::new();
-    for ass in &existing_assignments {
-        if let Some(st) = all_shift_types.iter().find(|t| t.id == ass.shift_type_id) {
-            assignments.push(TempAssignment {
-                employee_id: ass.employee_id,
-                shift_type_id: ass.shift_type_id,
-                date: ass.assignment_date,
-                start_time: st.start_time,
-                end_time: st.end_time,
-                duration: calculate_duration(st),
-            });
+    let mut deletable_assignment_ids: Vec<Uuid> = Vec::new();
+
+    for ass in &all_range_assignments {
+        let in_target_range = ass.assignment_date >= start_date && ass.assignment_date <= end_date;
+        let is_preserved = !in_target_range
+            || ass.status != "planned"
+            || swapped_assignment_ids.contains(&ass.id);
+
+        if is_preserved {
+            if let Some(st) = all_shift_types.iter().find(|t| t.id == ass.shift_type_id) {
+                assignments.push(TempAssignment {
+                    employee_id: ass.employee_id,
+                    shift_type_id: ass.shift_type_id,
+                    date: ass.assignment_date,
+                    start_time: st.start_time,
+                    end_time: st.end_time,
+                    duration: calculate_shift_duration(st, &tenant.settings),
+                    is_new: false,
+                });
+            }
+        } else {
+            deletable_assignment_ids.push(ass.id);
         }
     }
 
@@ -169,14 +177,6 @@ pub async fn run_auto_schedule(
             .filter(|a| a.employee_id == emp_id && a.date == date)
             .map(|a| a.duration)
             .sum()
-    };
-
-    let get_last_shift_times = |emp_id: Uuid, date: NaiveDate, ass_list: &[TempAssignment]| -> Option<(NaiveTime, NaiveTime)> {
-        ass_list
-            .iter()
-            .filter(|a| a.employee_id == emp_id && a.date == date)
-            .map(|a| (a.start_time, a.end_time))
-            .last()
     };
 
     let is_assigned = |emp_id: Uuid, date: NaiveDate, ass_list: &[TempAssignment]| -> bool {
@@ -219,7 +219,15 @@ pub async fn run_auto_schedule(
 
         // C. Staff each shift type
         for st in day_shift_types {
-            let needed = st.min_staff.unwrap_or(1).max(1) as usize;
+            let min_required = st.min_staff.unwrap_or(1).max(1) as usize;
+            let already_staffed = assignments
+                .iter()
+                .filter(|a| a.date == current_date && a.shift_type_id == st.id)
+                .count();
+            if already_staffed >= min_required {
+                continue;
+            }
+            let needed = min_required - already_staffed;
             let mut candidates = Vec::new();
 
             for emp in &active_employees {
@@ -245,27 +253,41 @@ pub async fn run_auto_schedule(
                 }
 
                 // Check daily limit
-                let shift_dur = calculate_duration(st);
+                let shift_dur = calculate_shift_duration(st, &tenant.settings);
                 let day_hours = get_daily_hours(emp.id, current_date, &assignments);
                 if day_hours + shift_dur > max_daily_hours {
                     continue;
                 }
 
-                // Check weekly limit
+                // Check weekly limit (employee weekly_hours and tenant max_weekly_hours)
                 let current_weekday = current_date.weekday().num_days_from_monday();
                 let week_monday = current_date - Duration::days(current_weekday as i64);
                 let week_hours = get_weekly_hours(emp.id, week_monday, &assignments);
-                let emp_weekly_limit = emp.weekly_hours as f64;
+                let emp_weekly_limit = match tenant_max_weekly_hours {
+                    Some(t_max) => (emp.weekly_hours as f64).min(t_max),
+                    None => emp.weekly_hours as f64,
+                };
                 if week_hours + shift_dur > emp_weekly_limit {
                     continue;
                 }
 
-                // Check rest period (11 hours)
-                if let Some((prev_start, prev_end)) = get_last_shift_times(emp.id, current_date.pred_opt().unwrap(), &assignments) {
-                    let rest = calculate_rest(prev_start, prev_end, st.start_time);
-                    if rest < min_rest_hours {
-                        continue;
-                    }
+                // Check rest period (11 hours) against previous day AND next day
+                let prev_date = current_date.pred_opt().unwrap();
+                let violates_prev_rest = assignments
+                    .iter()
+                    .filter(|a| a.employee_id == emp.id && a.date == prev_date)
+                    .any(|a| calculate_rest(a.start_time, a.end_time, st.start_time) < min_rest_hours);
+                if violates_prev_rest {
+                    continue;
+                }
+
+                let next_date = current_date.succ_opt().unwrap();
+                let violates_next_rest = assignments
+                    .iter()
+                    .filter(|a| a.employee_id == emp.id && a.date == next_date)
+                    .any(|a| calculate_rest(st.start_time, st.end_time, a.start_time) < min_rest_hours);
+                if violates_next_rest {
+                    continue;
                 }
 
                 // Candidate is eligible! Compute score.
@@ -300,7 +322,8 @@ pub async fn run_auto_schedule(
                     date: current_date,
                     start_time: st.start_time,
                     end_time: st.end_time,
-                    duration: calculate_duration(st),
+                    duration: calculate_shift_duration(st, &tenant.settings),
+                    is_new: true,
                 });
             }
         }
@@ -308,21 +331,22 @@ pub async fn run_auto_schedule(
         current_date = current_date.succ_opt().unwrap();
     }
 
-    // 8. DB Transaction to delete existing and insert new assignments in range
+    // 8. DB Transaction to delete replaceable planned assignments and insert new assignments in range
     let txn = db.begin().await?;
+    set_tenant_context(&txn, tenant_id).await?;
 
-    // Clear existing assignments in the range
-    ShiftAssignment::delete_many()
-        .filter(shift_assignment::Column::TenantId.eq(*tenant_id))
-        .filter(shift_assignment::Column::AssignmentDate.gte(start_date))
-        .filter(shift_assignment::Column::AssignmentDate.lte(end_date))
-        .exec(&txn)
-        .await?;
+    if !deletable_assignment_ids.is_empty() {
+        ShiftAssignment::delete_many()
+            .filter(shift_assignment::Column::TenantId.eq(*tenant_id))
+            .filter(shift_assignment::Column::Id.is_in(deletable_assignment_ids))
+            .exec(&txn)
+            .await?;
+    }
 
     // Insert new generated assignments
     let new_assignments: Vec<ActiveModel> = assignments
         .into_iter()
-        .filter(|a| a.date >= start_date && a.date <= end_date) // only save the newly generated ones
+        .filter(|a| a.is_new && a.date >= start_date && a.date <= end_date)
         .map(|a| ActiveModel {
             id: Set(Uuid::new_v4()),
             tenant_id: Set(*tenant_id),

@@ -321,16 +321,17 @@ async fn update_employee(
                 .await?
                 .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))?;
 
+            let old_email = existing.email.clone();
             let mut active_model: ActiveModel = existing.into();
 
-            if let Some(v) = body.first_name {
-                active_model.first_name = Set(Some(v));
+            if let Some(ref v) = body.first_name {
+                active_model.first_name = Set(Some(v.clone()));
             }
-            if let Some(v) = body.last_name {
-                active_model.last_name = Set(Some(v));
+            if let Some(ref v) = body.last_name {
+                active_model.last_name = Set(Some(v.clone()));
             }
-            if let Some(v) = body.email {
-                active_model.email = Set(Some(v));
+            if let Some(ref v) = body.email {
+                active_model.email = Set(Some(v.clone()));
             }
             if let Some(v) = body.phone {
                 active_model.phone = Set(Some(v));
@@ -359,6 +360,70 @@ async fn update_employee(
 
             active_model.updated_at = Set(now);
 
+            // Synchronize linked user account if one exists with the previous email
+            if let Some(ref prev_email) = old_email {
+                if !prev_email.trim().is_empty() {
+                    if let Some(linked_user) = user::Entity::find()
+                        .filter(user::Column::TenantId.eq(tenant_id))
+                        .filter(user::Column::Email.eq(prev_email))
+                        .one(txn)
+                        .await?
+                    {
+                        let mut active_u: user::ActiveModel = linked_user.clone().into();
+                        let mut user_changed = false;
+
+                        if let Some(ref new_email) = body.email {
+                            let trimmed = new_email.trim();
+                            if !trimmed.is_empty() && trimmed != prev_email.trim() {
+                                let collision = user::Entity::find()
+                                    .filter(user::Column::TenantId.eq(tenant_id))
+                                    .filter(user::Column::Email.eq(trimmed))
+                                    .one(txn)
+                                    .await?;
+                                if collision.is_some() {
+                                    return Err(AppError::Conflict(
+                                        "Für die neue E-Mail-Adresse existiert bereits ein Benutzerkonto.".to_string(),
+                                    ));
+                                }
+                                active_u.email = Set(trimmed.to_string());
+                                user_changed = true;
+                            }
+                        }
+
+                        if let Some(ref first) = body.first_name {
+                            active_u.first_name = Set(first.clone());
+                            user_changed = true;
+                        }
+                        if let Some(ref last) = body.last_name {
+                            active_u.last_name = Set(last.clone());
+                            user_changed = true;
+                        }
+                        if let Some(false) = body.is_active {
+                            if linked_user.role == "admin" && linked_user.is_active {
+                                let admin_count = user::Entity::find()
+                                    .filter(user::Column::TenantId.eq(tenant_id))
+                                    .filter(user::Column::Role.eq("admin"))
+                                    .filter(user::Column::IsActive.eq(true))
+                                    .count(txn)
+                                    .await?;
+                                if admin_count > 1 {
+                                    active_u.is_active = Set(false);
+                                    user_changed = true;
+                                }
+                            } else {
+                                active_u.is_active = Set(false);
+                                user_changed = true;
+                            }
+                        }
+
+                        if user_changed {
+                            active_u.updated_at = Set(now);
+                            active_u.update(txn).await?;
+                        }
+                    }
+                }
+            }
+
             let model = active_model.update(txn).await?;
             Ok(model)
         })
@@ -382,14 +447,43 @@ async fn delete_employee(
 
     execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
-            let delete_res = Employee::delete_many()
+            let existing = Employee::find()
+                .filter(Column::Id.eq(id))
+                .filter(Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound(format!("Employee {id} not found")))?;
+
+            if let Some(ref emp_email) = existing.email {
+                if !emp_email.trim().is_empty() {
+                    if let Some(linked_user) = user::Entity::find()
+                        .filter(user::Column::TenantId.eq(tenant_id))
+                        .filter(user::Column::Email.eq(emp_email))
+                        .one(txn)
+                        .await?
+                    {
+                        if linked_user.role == "admin" && linked_user.is_active {
+                            let admin_count = user::Entity::find()
+                                .filter(user::Column::TenantId.eq(tenant_id))
+                                .filter(user::Column::Role.eq("admin"))
+                                .filter(user::Column::IsActive.eq(true))
+                                .count(txn)
+                                .await?;
+                            if admin_count > 1 {
+                                user::Entity::delete_by_id(linked_user.id).exec(txn).await?;
+                            }
+                        } else if linked_user.role != "super_admin" {
+                            user::Entity::delete_by_id(linked_user.id).exec(txn).await?;
+                        }
+                    }
+                }
+            }
+
+            Employee::delete_many()
                 .filter(Column::Id.eq(id))
                 .filter(Column::TenantId.eq(tenant_id))
                 .exec(txn)
                 .await?;
-            if delete_res.rows_affected == 0 {
-                return Err(AppError::NotFound(format!("Employee {id} not found")));
-            }
             Ok(())
         })
     })
@@ -520,6 +614,9 @@ async fn create_employee_user(
     let role = payload.role.unwrap_or_else(|| "viewer".to_string());
     if !["viewer", "planner", "admin"].contains(&role.as_str()) {
         return Err(AppError::BadRequest("Ungültige Rolle. Erlaubt: viewer, planner, admin".to_string()));
+    }
+    if role != "viewer" {
+        require_admin(&auth)?;
     }
 
     use argon2::{

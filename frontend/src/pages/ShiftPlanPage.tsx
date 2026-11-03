@@ -164,9 +164,12 @@ export default function ShiftPlanPage() {
     const set = new Set<string>();
     for (const [empId, vacs] of Object.entries(vacationMap)) {
       for (const v of vacs) {
-        // Vacation has start_date and end_date – mark every day
-        const start = new Date(v.start_date);
-        const end = new Date(v.end_date);
+        if (v.status !== 'approved') continue;
+        // Parse YYYY-MM-DD in local time to prevent UTC timezone offset issues
+        const [sy, sm, sd] = v.start_date.split('-').map(Number);
+        const [ey, em, ed] = v.end_date.split('-').map(Number);
+        const start = new Date(sy, (sm || 1) - 1, sd || 1);
+        const end = new Date(ey, (em || 1) - 1, ed || 1);
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
           set.add(`${empId}|${toISODateString(d)}`);
         }
@@ -919,7 +922,7 @@ export default function ShiftPlanPage() {
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
                 {validationWarnings.map((warning, index) => {
-                  const isCritical = warning.severity === 'Critical';
+                  const isCritical = warning.severity.toLowerCase() === 'critical';
                   return (
                     <div
                       key={index}
@@ -960,7 +963,7 @@ export default function ShiftPlanPage() {
               <button
                 className="btn btn-primary"
                 style={{
-                  background: validationWarnings.some(w => w.severity === 'Critical') ? 'var(--danger)' : 'var(--accent)',
+                  background: validationWarnings.some(w => w.severity.toLowerCase() === 'critical') ? 'var(--danger)' : 'var(--accent)',
                 }}
                 onClick={() => {
                   if (proposedAssignment) {

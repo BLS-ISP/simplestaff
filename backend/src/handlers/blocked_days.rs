@@ -47,7 +47,44 @@ impl From<employee_blocked_day::Model> for BlockedDayResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
+async fn verify_employee_access(
+    txn: &sea_orm::DatabaseTransaction,
+    auth_user: &AuthUser,
+    employee_id: Uuid,
+) -> Result<(), AppError> {
+    let emp = crate::models::employee::Entity::find()
+        .filter(crate::models::employee::Column::Id.eq(employee_id))
+        .filter(crate::models::employee::Column::TenantId.eq(auth_user.tenant_id))
+        .one(txn)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Employee not found".to_string()))?;
+
+    if !matches!(
+        auth_user.role.as_str(),
+        "super_admin" | "admin" | "planner"
+    ) {
+        let user_model = crate::models::user::Entity::find()
+            .filter(crate::models::user::Column::Id.eq(auth_user.user_id))
+            .filter(crate::models::user::Column::TenantId.eq(auth_user.tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        let emp_email = emp.email.unwrap_or_default();
+        if emp_email.trim().is_empty()
+            || !emp_email.trim().eq_ignore_ascii_case(user_model.email.trim())
+        {
+            return Err(AppError::Forbidden(
+                "Sie dürfen nur Ihre eigenen Sperrtage verwalten.".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
 
 // ---------------------------------------------------------------------------
 // Handlers
@@ -60,19 +97,12 @@ pub async fn list_blocked_days(
     Path(employee_id): Path<Uuid>,
 ) -> Result<Json<Vec<BlockedDayResponse>>, AppError> {
     let blocked_days = execute_with_tenant(&state.db, &auth_user.tenant_id, |txn| {
+        let auth_clone = auth_user.clone();
         Box::pin(async move {
-            let emp_exists = crate::models::employee::Entity::find()
-                .filter(crate::models::employee::Column::Id.eq(employee_id))
-                .filter(crate::models::employee::Column::TenantId.eq(auth_user.tenant_id))
-                .one(txn)
-                .await?
-                .is_some();
-            if !emp_exists {
-                return Err(AppError::NotFound("Employee not found".to_string()));
-            }
+            verify_employee_access(txn, &auth_clone, employee_id).await?;
 
             BlockedDay::find()
-                .filter(Column::TenantId.eq(auth_user.tenant_id))
+                .filter(Column::TenantId.eq(auth_clone.tenant_id))
                 .filter(Column::EmployeeId.eq(employee_id))
                 .order_by_asc(Column::BlockedDate)
                 .all(txn)
@@ -96,16 +126,9 @@ pub async fn create_blocked_day(
     let tenant_id = auth_user.tenant_id;
 
     let blocked_day = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        let auth_clone = auth_user.clone();
         Box::pin(async move {
-            let emp_exists = crate::models::employee::Entity::find()
-                .filter(crate::models::employee::Column::Id.eq(employee_id))
-                .filter(crate::models::employee::Column::TenantId.eq(tenant_id))
-                .one(txn)
-                .await?
-                .is_some();
-            if !emp_exists {
-                return Err(AppError::NotFound("Employee not found".to_string()));
-            }
+            verify_employee_access(txn, &auth_clone, employee_id).await?;
 
             let active_model = ActiveModel {
                 id: Set(Uuid::new_v4()),
@@ -131,10 +154,13 @@ pub async fn delete_blocked_day(
     Path((employee_id, id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     execute_with_tenant(&state.db, &auth_user.tenant_id, |txn| {
+        let auth_clone = auth_user.clone();
         Box::pin(async move {
+            verify_employee_access(txn, &auth_clone, employee_id).await?;
+
             let blocked_day = BlockedDay::find()
                 .filter(Column::Id.eq(id))
-                .filter(Column::TenantId.eq(auth_user.tenant_id))
+                .filter(Column::TenantId.eq(auth_clone.tenant_id))
                 .filter(Column::EmployeeId.eq(employee_id))
                 .one(txn)
                 .await?

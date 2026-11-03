@@ -168,6 +168,26 @@ pub async fn create_assignment(
 
     let model = execute_with_tenant(&state.db, &tenant_id, |txn| {
         Box::pin(async move {
+            let emp_exists = crate::models::employee::Entity::find()
+                .filter(crate::models::employee::Column::Id.eq(body.employee_id))
+                .filter(crate::models::employee::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .is_some();
+            if !emp_exists {
+                return Err(AppError::NotFound("Employee not found in tenant".to_string()));
+            }
+
+            let st_exists = crate::models::shift_type::Entity::find()
+                .filter(crate::models::shift_type::Column::Id.eq(body.shift_type_id))
+                .filter(crate::models::shift_type::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .is_some();
+            if !st_exists {
+                return Err(AppError::NotFound("Shift type not found in tenant".to_string()));
+            }
+
             let active = ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tenant_id: Set(tenant_id),
@@ -214,9 +234,27 @@ pub async fn update_assignment(
             let mut active: ActiveModel = existing.into();
 
             if let Some(employee_id) = body.employee_id {
+                let emp_exists = crate::models::employee::Entity::find()
+                    .filter(crate::models::employee::Column::Id.eq(employee_id))
+                    .filter(crate::models::employee::Column::TenantId.eq(tenant_id))
+                    .one(txn)
+                    .await?
+                    .is_some();
+                if !emp_exists {
+                    return Err(AppError::NotFound("Employee not found in tenant".to_string()));
+                }
                 active.employee_id = Set(employee_id);
             }
             if let Some(shift_type_id) = body.shift_type_id {
+                let st_exists = crate::models::shift_type::Entity::find()
+                    .filter(crate::models::shift_type::Column::Id.eq(shift_type_id))
+                    .filter(crate::models::shift_type::Column::TenantId.eq(tenant_id))
+                    .one(txn)
+                    .await?
+                    .is_some();
+                if !st_exists {
+                    return Err(AppError::NotFound("Shift type not found in tenant".to_string()));
+                }
                 active.shift_type_id = Set(shift_type_id);
             }
             if let Some(assignment_date) = body.assignment_date {

@@ -117,16 +117,31 @@ export default function VacationsPage() {
     }
   };
 
+  const parseLocalDate = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, (m || 1) - 1, d || 1);
+  };
+
   const calculateDays = (start: string, end: string) => {
-    const s = new Date(start);
-    const e = new Date(end);
-    const diffTime = Math.abs(e.getTime() - s.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    return isNaN(diffDays) ? 0 : diffDays;
+    if (!start || !end) return 0;
+    const s = parseLocalDate(start);
+    const e = parseLocalDate(end);
+    if (isNaN(s.getTime()) || isNaN(e.getTime()) || e < s) return 0;
+    let count = 0;
+    const curr = new Date(s);
+    while (curr <= e) {
+      const day = curr.getDay();
+      // Count Monday (1) through Friday (5) to match backend count_vacation_days
+      if (day >= 1 && day <= 5) {
+        count += 1;
+      }
+      curr.setDate(curr.getDate() + 1);
+    }
+    return count;
   };
 
   const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
+    const d = parseLocalDate(dateStr);
     return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 

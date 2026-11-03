@@ -443,13 +443,23 @@ function StammdatenTab({ employee, onSave, saving }: StammdatenTabProps) {
                 <label style={labelStyle}>Rolle / Berechtigungsstufe</label>
                 <select
                   className="input"
-                  value={accountRole}
+                  value={isAdmin ? accountRole : 'viewer'}
                   onChange={(e) => setAccountRole(e.target.value)}
+                  disabled={!isAdmin}
                 >
                   <option value="viewer">Mitarbeiter (Viewer – Eigene Dienste & Urlaube)</option>
-                  <option value="planner">Schichtleiter / Führungskraft (Planner – Pläne & Freigaben)</option>
-                  <option value="admin">Betriebsleiter (Administrator – Volle Mandanten-Rechte)</option>
+                  {isAdmin && (
+                    <>
+                      <option value="planner">Schichtleiter / Führungskraft (Planner – Pläne & Freigaben)</option>
+                      <option value="admin">Betriebsleiter (Administrator – Volle Mandanten-Rechte)</option>
+                    </>
+                  )}
                 </select>
+                {!isAdmin && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
+                    * Nur Administratoren können Führungsrollen vergeben.
+                  </span>
+                )}
               </div>
 
               <div className="form-group" style={{ margin: 0 }}>

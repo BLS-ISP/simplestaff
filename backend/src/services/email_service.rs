@@ -10,15 +10,25 @@ use tracing::{error, info};
 
 use crate::config::Config;
 
+fn escape_html(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
 /// Base HTML wrapper for branded SimpleStaff notification emails
 fn wrap_html(title: &str, content_html: &str, app_url: &str) -> String {
+    let title_esc = escape_html(title);
     format!(
         r#"<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{title}</title>
+  <title>{title_esc}</title>
   <style>
     body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; padding: 24px; }}
     .card {{ background-color: #ffffff; max-width: 560px; margin: 0 auto; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }}
@@ -176,14 +186,15 @@ pub fn notify_vacation_requested(
     notes: Option<String>,
 ) {
     tokio::spawn(async move {
+        let emp_esc = escape_html(&employee_name);
         let subject = format!("Neuer Urlaubsantrag von {employee_name} ({start_date} – {end_date})");
         let notes_html = notes
-            .map(|n| format!("<p><strong>Notiz:</strong> {}</p>", n))
+            .map(|n| format!("<p><strong>Notiz:</strong> {}</p>", escape_html(&n)))
             .unwrap_or_default();
 
         let content = format!(
             r#"<h2 style="margin-top:0; color:#0f172a;">Neuer Urlaubsantrag zur Prüfung</h2>
-            <p><strong>{employee_name}</strong> hat einen neuen Urlaubsantrag eingereicht:</p>
+            <p><strong>{emp_esc}</strong> hat einen neuen Urlaubsantrag eingereicht:</p>
             <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin:16px 0;">
               <p style="margin:4px 0;"><strong>Zeitraum:</strong> {start_date} bis {end_date}</p>
               <p style="margin:4px 0;"><strong>Status:</strong> <span class="badge badge-pending">Eingereicht</span></p>
@@ -214,11 +225,12 @@ pub fn notify_vacation_decided(
         let status_de = if is_approved { "genehmigt" } else { "abgelehnt" };
         let badge_class = if is_approved { "badge-approved" } else { "badge-rejected" };
 
+        let emp_esc = escape_html(&employee_name);
         let subject = format!("Dein Urlaubsantrag ({start_date} – {end_date}) wurde {status_de}");
 
         let content = format!(
             r#"<h2 style="margin-top:0; color:#0f172a;">Urlaubsantrag {status_de}</h2>
-            <p>Hallo {employee_name},</p>
+            <p>Hallo {emp_esc},</p>
             <p>dein Urlaubsantrag für den Zeitraum <strong>{start_date} bis {end_date}</strong> wurde soeben von deiner Führungskraft bearbeitet:</p>
             <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin:16px 0;">
               <p style="margin:4px 0;"><strong>Zeitraum:</strong> {start_date} bis {end_date}</p>
@@ -242,6 +254,9 @@ pub fn notify_swap_proposed(
     shift_name: String,
 ) {
     tokio::spawn(async move {
+        let req_esc = escape_html(&requesting_emp_name);
+        let back_esc = escape_html(&backup_emp_name);
+        let shift_esc = escape_html(&shift_name);
         let subject = format!("Schichtübernahme zur Freigabe: {backup_emp_name} für {requesting_emp_name} ({shift_date})");
 
         let content = format!(
@@ -249,9 +264,9 @@ pub fn notify_swap_proposed(
             <p>In der Schichttauschbörse wurde eine Vertretung gefunden:</p>
             <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin:16px 0;">
               <p style="margin:4px 0;"><strong>Datum:</strong> {shift_date}</p>
-              <p style="margin:4px 0;"><strong>Schicht:</strong> {shift_name}</p>
-              <p style="margin:4px 0;"><strong>Ursprünglich eingeteilt:</strong> {requesting_emp_name}</p>
-              <p style="margin:4px 0;"><strong>Übernimmt die Schicht:</strong> {backup_emp_name}</p>
+              <p style="margin:4px 0;"><strong>Schicht:</strong> {shift_esc}</p>
+              <p style="margin:4px 0;"><strong>Ursprünglich eingeteilt:</strong> {req_esc}</p>
+              <p style="margin:4px 0;"><strong>Übernimmt die Schicht:</strong> {back_esc}</p>
             </div>
             <p>Bitte prüfe die Arbeitszeitgesetz-Konformität und gib den Tausch im Portal frei.</p>"#
         );
@@ -277,14 +292,15 @@ pub fn notify_swap_decided(
         let status_de = if is_approved { "genehmigt" } else { "abgelehnt" };
         let badge_class = if is_approved { "badge-approved" } else { "badge-rejected" };
 
+        let shift_esc = escape_html(&shift_name);
         let subject = format!("Schichttausch für den {shift_date} ({shift_name}) wurde {status_de}");
 
         let content = format!(
             r#"<h2 style="margin-top:0; color:#0f172a;">Schichttausch {status_de}</h2>
-            <p>Der Tauschantrag für die Schicht <strong>{shift_name}</strong> am <strong>{shift_date}</strong> wurde bearbeitet:</p>
+            <p>Der Tauschantrag für die Schicht <strong>{shift_esc}</strong> am <strong>{shift_date}</strong> wurde bearbeitet:</p>
             <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin:16px 0;">
               <p style="margin:4px 0;"><strong>Datum:</strong> {shift_date}</p>
-              <p style="margin:4px 0;"><strong>Schicht:</strong> {shift_name}</p>
+              <p style="margin:4px 0;"><strong>Schicht:</strong> {shift_esc}</p>
               <p style="margin:4px 0;"><strong>Status:</strong> <span class="badge {badge_class}">{status_de}</span></p>
             </div>
             <p>Der Dienstplan und dein Smartphone-Kalender wurden entsprechend aktualisiert.</p>"#
@@ -314,17 +330,19 @@ pub fn notify_welcome_user(
         };
 
         let subject = "Dein Zugang zu SimpleStaff wurde freigeschaltet";
+        let emp_esc = escape_html(&employee_name);
+        let email_esc = escape_html(&employee_email);
 
         let pw_info = initial_password
-            .map(|p| format!("<p style=\"margin:4px 0;\"><strong>Startpasswort:</strong> <code>{}</code></p>", p))
+            .map(|p| format!("<p style=\"margin:4px 0;\"><strong>Startpasswort:</strong> <code>{}</code></p>", escape_html(&p)))
             .unwrap_or_default();
 
         let content = format!(
             r#"<h2 style="margin-top:0; color:#0f172a;">Willkommen bei SimpleStaff!</h2>
-            <p>Hallo {employee_name},</p>
+            <p>Hallo {emp_esc},</p>
             <p>dein persönlicher Zugang zur Dienstplan- und Mitarbeiterplattform SimpleStaff wurde freigeschaltet.</p>
             <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin:16px 0;">
-              <p style="margin:4px 0;"><strong>E-Mail / Login:</strong> {employee_email}</p>
+              <p style="margin:4px 0;"><strong>E-Mail / Login:</strong> {email_esc}</p>
               <p style="margin:4px 0;"><strong>Rolle & Berechtigung:</strong> {role_label}</p>
               {pw_info}
             </div>
@@ -351,10 +369,11 @@ pub fn notify_role_updated(
         };
 
         let subject = format!("Deine Benutzerrolle wurde auf '{role_label}' aktualisiert");
+        let emp_esc = escape_html(&employee_name);
 
         let content = format!(
             r#"<h2 style="margin-top:0; color:#0f172a;">Berechtigungsstufe aktualisiert</h2>
-            <p>Hallo {employee_name},</p>
+            <p>Hallo {emp_esc},</p>
             <p>ein Administrator deines Betriebs hat deine Zugriffsrechte in SimpleStaff aktualisiert:</p>
             <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin:16px 0;">
               <p style="margin:4px 0;"><strong>Neue Rolle:</strong> <span class="badge badge-approved">{role_label}</span></p>
@@ -376,17 +395,19 @@ pub fn notify_password_changed(
 ) {
     tokio::spawn(async move {
         let subject = "Dein SimpleStaff-Passwort wurde aktualisiert".to_string();
+        let emp_esc = escape_html(&employee_name);
+        let email_esc = escape_html(&employee_email);
 
         let pw_info = new_password
-            .map(|p| format!("<p style=\"margin:4px 0;\"><strong>Neues Passwort:</strong> <code>{}</code></p>", p))
+            .map(|p| format!("<p style=\"margin:4px 0;\"><strong>Neues Passwort:</strong> <code>{}</code></p>", escape_html(&p)))
             .unwrap_or_else(|| "<p style=\"margin:4px 0;\">Das Passwort wurde von der Betriebsleitung zurückgesetzt.</p>".to_string());
 
         let content = format!(
             r#"<h2 style="margin-top:0; color:#0f172a;">Passwort aktualisiert</h2>
-            <p>Hallo {employee_name},</p>
+            <p>Hallo {emp_esc},</p>
             <p>dein Passwort für den Zugriff auf SimpleStaff wurde soeben aktualisiert:</p>
             <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:14px; margin:16px 0;">
-              <p style="margin:4px 0;"><strong>E-Mail / Login:</strong> {employee_email}</p>
+              <p style="margin:4px 0;"><strong>E-Mail / Login:</strong> {email_esc}</p>
               {pw_info}
             </div>
             <p>Bitte melde dich mit den neuen Zugangsdaten an und ändere dein Passwort bei Bedarf im Profil.</p>"#

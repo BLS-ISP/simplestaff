@@ -84,6 +84,39 @@ fn require_manager(auth: &AuthUser) -> Result<(), AppError> {
     }
 }
 
+async fn verify_employee_access(
+    txn: &sea_orm::DatabaseTransaction,
+    auth: &AuthUser,
+    employee_id: Uuid,
+) -> Result<employee::Model, AppError> {
+    let emp = employee::Entity::find()
+        .filter(employee::Column::Id.eq(employee_id))
+        .filter(employee::Column::TenantId.eq(auth.tenant_id))
+        .one(txn)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Employee not found".to_string()))?;
+
+    if !matches!(auth.role.as_str(), "super_admin" | "admin" | "planner") {
+        let user_model = user::Entity::find()
+            .filter(user::Column::Id.eq(auth.user_id))
+            .filter(user::Column::TenantId.eq(auth.tenant_id))
+            .one(txn)
+            .await?
+            .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+        let emp_email = emp.email.clone().unwrap_or_default();
+        if emp_email.trim().is_empty()
+            || !emp_email.trim().eq_ignore_ascii_case(user_model.email.trim())
+        {
+            return Err(AppError::Forbidden(
+                "Sie dürfen nur auf Ihre eigenen Urlaubsanträge zugreifen.".to_string(),
+            ));
+        }
+    }
+
+    Ok(emp)
+}
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -103,19 +136,12 @@ pub async fn list_vacations(
     Path(employee_id): Path<Uuid>,
 ) -> Result<Json<Vec<VacationResponse>>, AppError> {
     let vacations = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
+        let auth_clone = auth.clone();
         Box::pin(async move {
-            let emp_exists = employee::Entity::find()
-                .filter(employee::Column::Id.eq(employee_id))
-                .filter(employee::Column::TenantId.eq(auth.tenant_id))
-                .one(txn)
-                .await?
-                .is_some();
-            if !emp_exists {
-                return Err(AppError::NotFound("Employee not found".to_string()));
-            }
+            verify_employee_access(txn, &auth_clone, employee_id).await?;
 
             Vacation::find()
-                .filter(Column::TenantId.eq(auth.tenant_id))
+                .filter(Column::TenantId.eq(auth_clone.tenant_id))
                 .filter(Column::EmployeeId.eq(employee_id))
                 .order_by_desc(Column::StartDate)
                 .all(txn)
@@ -147,13 +173,9 @@ pub async fn create_vacation(
     let notes_for_mail = body.notes.clone();
 
     let (vacation, manager_emails, emp_name) = execute_with_tenant(&state.db, &tenant_id, |txn| {
+        let auth_clone = auth.clone();
         Box::pin(async move {
-            let emp = employee::Entity::find()
-                .filter(employee::Column::Id.eq(employee_id))
-                .filter(employee::Column::TenantId.eq(tenant_id))
-                .one(txn)
-                .await?
-                .ok_or_else(|| AppError::NotFound("Employee not found".to_string()))?;
+            let emp = verify_employee_access(txn, &auth_clone, employee_id).await?;
 
             let first = emp.first_name.clone().unwrap_or_default();
             let last = emp.last_name.clone().unwrap_or_default();
@@ -212,7 +234,7 @@ pub async fn approve_vacation(
 ) -> Result<Json<VacationResponse>, AppError> {
     require_manager(&auth)?;
 
-    let (vacation, emp_email, emp_name) = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
+    let (vacation, emp_email, emp_name, status_changed) = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
             let vacation = Vacation::find()
                 .filter(Column::Id.eq(vacation_id))
@@ -223,6 +245,7 @@ pub async fn approve_vacation(
                 .ok_or_else(|| AppError::NotFound("Vacation not found".to_string()))?;
 
             let previous_status = vacation.status.clone();
+            let status_changed = previous_status != "approved";
 
             let mut active: ActiveModel = vacation.into();
             active.status = Set("approved".to_string());
@@ -244,22 +267,22 @@ pub async fn approve_vacation(
                 emp_name = format!("{} {}", first, last).trim().to_string();
 
                 // If it wasn't already approved, deduct the vacation days from employee balance
-                if previous_status != "approved" {
+                if status_changed {
                     let days = count_vacation_days(updated_vacation.start_date, updated_vacation.end_date);
                     let mut active_emp: employee::ActiveModel = emp.into();
-                    let new_remaining = (active_emp.vacation_days_remaining.unwrap() - days).max(0.0);
+                    let new_remaining = active_emp.vacation_days_remaining.unwrap() - days;
                     active_emp.vacation_days_remaining = Set(new_remaining);
                     active_emp.updated_at = Set(chrono::Utc::now().into());
                     active_emp.update(txn).await?;
                 }
             }
 
-            Ok((updated_vacation, emp_email, emp_name))
+            Ok((updated_vacation, emp_email, emp_name, status_changed))
         })
     })
     .await?;
 
-    if !emp_email.trim().is_empty() {
+    if status_changed && !emp_email.trim().is_empty() {
         crate::services::email_service::notify_vacation_decided(
             state.config.clone(),
             emp_email,
@@ -281,7 +304,7 @@ pub async fn reject_vacation(
 ) -> Result<Json<VacationResponse>, AppError> {
     require_manager(&auth)?;
 
-    let (vacation, emp_email, emp_name) = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
+    let (vacation, emp_email, emp_name, status_changed) = execute_with_tenant(&state.db, &auth.tenant_id, |txn| {
         Box::pin(async move {
             let vacation = Vacation::find()
                 .filter(Column::Id.eq(vacation_id))
@@ -292,6 +315,7 @@ pub async fn reject_vacation(
                 .ok_or_else(|| AppError::NotFound("Vacation not found".to_string()))?;
 
             let previous_status = vacation.status.clone();
+            let status_changed = previous_status != "rejected";
 
             let mut active: ActiveModel = vacation.into();
             active.status = Set("rejected".to_string());
@@ -323,12 +347,12 @@ pub async fn reject_vacation(
                 }
             }
 
-            Ok((updated_vacation, emp_email, emp_name))
+            Ok((updated_vacation, emp_email, emp_name, status_changed))
         })
     })
     .await?;
 
-    if !emp_email.trim().is_empty() {
+    if status_changed && !emp_email.trim().is_empty() {
         crate::services::email_service::notify_vacation_decided(
             state.config.clone(),
             emp_email,

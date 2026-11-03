@@ -117,6 +117,56 @@ fn parse_employee_id_from_path(raw: &str) -> Result<Uuid, AppError> {
     })
 }
 
+/// Ensure non-managers can only access their own employee calendar.
+async fn ensure_own_or_manager_profile(
+    db: &sea_orm::DatabaseConnection,
+    auth_user: &AuthUser,
+    employee_id: Uuid,
+) -> Result<(), AppError> {
+    if matches!(
+        auth_user.role.as_str(),
+        "super_admin" | "admin" | "planner"
+    ) {
+        return Ok(());
+    }
+
+    let tenant_id = auth_user.tenant_id;
+    let user_id = auth_user.user_id;
+    let is_own_profile = execute_with_tenant(db, &tenant_id, |txn| {
+        Box::pin(async move {
+            let user_model = user::Entity::find()
+                .filter(user::Column::Id.eq(user_id))
+                .filter(user::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?
+                .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
+
+            let emp_model = employee::Entity::find()
+                .filter(employee::Column::Id.eq(employee_id))
+                .filter(employee::Column::TenantId.eq(tenant_id))
+                .one(txn)
+                .await?;
+
+            if let Some(emp) = emp_model {
+                let emp_email = emp.email.unwrap_or_default();
+                Ok(!emp_email.trim().is_empty()
+                    && emp_email.trim().eq_ignore_ascii_case(user_model.email.trim()))
+            } else {
+                Ok(false)
+            }
+        })
+    })
+    .await?;
+
+    if !is_own_profile {
+        return Err(AppError::Forbidden(
+            "Sie dürfen nur auf Ihren eigenen Kalender zugreifen.".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -128,6 +178,8 @@ pub async fn get_employee_ics(
     Path(raw_id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
     let employee_id = parse_employee_id_from_path(&raw_id)?;
+
+    ensure_own_or_manager_profile(&state.db, &auth_user, employee_id).await?;
 
     let ics = generate_ics_for_employee(&state.db, &auth_user.tenant_id, employee_id).await?;
 
@@ -195,38 +247,8 @@ pub async fn generate_subscription_token(
 ) -> Result<Json<SubscriptionTokenResponse>, AppError> {
     let tenant_id = auth_user.tenant_id;
 
-    // Security check: if the user is a viewer (employee), they can only generate their own token.
-    if auth_user.role == "viewer" {
-        let is_own_profile = execute_with_tenant(&state.db, &tenant_id, |txn| {
-            let user_id = auth_user.user_id;
-            let tid = tenant_id;
-            Box::pin(async move {
-                let user_model = user::Entity::find()
-                    .filter(user::Column::Id.eq(user_id))
-                    .filter(user::Column::TenantId.eq(tid))
-                    .one(txn)
-                    .await?
-                    .ok_or_else(|| AppError::NotFound("User not found".to_string()))?;
-                
-                let emp_model = employee::Entity::find()
-                    .filter(employee::Column::Email.eq(user_model.email))
-                    .filter(employee::Column::TenantId.eq(tid))
-                    .one(txn)
-                    .await?;
-                
-                if let Some(emp) = emp_model {
-                    Ok(emp.id == employee_id)
-                } else {
-                    Ok(false)
-                }
-            })
-        })
-        .await?;
-
-        if !is_own_profile {
-            return Err(AppError::Forbidden("Sie dürfen nur für Ihr eigenes Profil einen Kalender-Abo-Link generieren.".to_string()));
-        }
-    }
+    // Security check: if the user is not a manager, they can only generate their own token.
+    ensure_own_or_manager_profile(&state.db, &auth_user, employee_id).await?;
 
     // Verify the employee exists within the tenant.
     execute_with_tenant(&state.db, &tenant_id, |txn| {

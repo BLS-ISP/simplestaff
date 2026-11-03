@@ -165,7 +165,7 @@ pub async fn create_shift_swap(
                 .await?
                 .ok_or_else(|| AppError::NotFound("Assignment not found".to_string()))?;
 
-            if role == "viewer" {
+            if !matches!(role.as_str(), "super_admin" | "admin" | "planner") {
                 let current_emp = emp.ok_or_else(|| AppError::Forbidden("Mitarbeiterprofil nicht gefunden".to_string()))?;
                 if assignment.employee_id != current_emp.id {
                     return Err(AppError::Forbidden("Sie können nur Ihre eigenen Schichten tauschen.".to_string()));
@@ -183,6 +183,20 @@ pub async fn create_shift_swap(
         let target_employee_id = payload.target_employee_id;
         let notes = payload.notes.clone();
         Box::pin(async move {
+            if let Some(target_id) = target_employee_id {
+                if target_id == requesting_employee_id {
+                    return Err(AppError::BadRequest("Sie können keinen Tausch an sich selbst adressieren.".to_string()));
+                }
+                let target_emp = employee::Entity::find()
+                    .filter(employee::Column::Id.eq(target_id))
+                    .filter(employee::Column::TenantId.eq(tenant_id))
+                    .one(txn)
+                    .await?;
+                if target_emp.is_none() {
+                    return Err(AppError::NotFound("Ziel-Mitarbeiter nicht im Mandanten gefunden.".to_string()));
+                }
+            }
+
             let existing = shift_swap::Entity::find()
                 .filter(shift_swap::Column::TenantId.eq(tenant_id))
                 .filter(shift_swap::Column::AssignmentId.eq(assignment_id))
@@ -379,6 +393,21 @@ pub async fn approve_shift_swap(
                 .await?
                 .ok_or_else(|| AppError::NotFound("Zugehörige Schichtzuweisung nicht gefunden.".to_string()))?;
 
+            // Check if backup_employee_id is already assigned to the same shift type on the same date
+            let duplicate = shift_assignment::Entity::find()
+                .filter(shift_assignment::Column::TenantId.eq(tenant_id))
+                .filter(shift_assignment::Column::EmployeeId.eq(backup_employee_id))
+                .filter(shift_assignment::Column::ShiftTypeId.eq(assignment.shift_type_id))
+                .filter(shift_assignment::Column::AssignmentDate.eq(assignment.assignment_date))
+                .filter(shift_assignment::Column::Id.ne(assignment.id))
+                .one(txn)
+                .await?;
+            if duplicate.is_some() {
+                return Err(AppError::BadRequest(
+                    "Der übernehmende Mitarbeiter ist in dieser Schicht bereits eingeteilt.".to_string(),
+                ));
+            }
+
             let tenant_record = tenant::Entity::find_by_id(tenant_id)
                 .one(txn)
                 .await?
@@ -396,11 +425,12 @@ pub async fn approve_shift_swap(
 
             let has_critical = warnings
                 .iter()
+                .filter(|w| w.code != "MAX_STAFF_EXCEEDED")
                 .any(|w| matches!(w.severity, WarningSeverity::Critical));
             if has_critical {
                 let msg = warnings
                     .iter()
-                    .filter(|w| matches!(w.severity, WarningSeverity::Critical))
+                    .filter(|w| w.code != "MAX_STAFF_EXCEEDED" && matches!(w.severity, WarningSeverity::Critical))
                     .map(|w| w.message_de.clone())
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -585,7 +615,7 @@ pub async fn delete_shift_swap(
                 return Err(AppError::BadRequest("Bereits genehmigte Tauschanträge können nicht storniert werden.".to_string()));
             }
 
-            if role == "viewer" {
+            if !matches!(role.as_str(), "super_admin" | "admin" | "planner") {
                 let user_record = user::Entity::find()
                     .filter(user::Column::Id.eq(user_id))
                     .filter(user::Column::TenantId.eq(tenant_id))

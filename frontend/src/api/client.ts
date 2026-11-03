@@ -517,7 +517,7 @@ export interface ValidationWarning {
   code: string;
   message_de: string;
   message_en: string;
-  severity: 'Warning' | 'Critical';
+  severity: 'warning' | 'critical' | 'info' | 'Warning' | 'Critical';
 }
 
 export interface ValidateResponse {

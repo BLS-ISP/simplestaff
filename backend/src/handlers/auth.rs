@@ -150,6 +150,9 @@ pub async fn register(
     };
     new_tenant.insert(&txn).await?;
 
+    // Set tenant context on transaction before inserting into RLS-protected users table
+    crate::middleware::tenant::set_tenant_context(&txn, &tenant_id).await?;
+
     // Create admin user
     let new_user = user::ActiveModel {
         id: Set(user_id),
@@ -186,41 +189,55 @@ pub async fn login(
     }
 
     // Bypass RLS — we don't know the tenant yet, so use raw SQL.
-    let result = state
+    // Query all matching active rows in case the same email exists in multiple tenants.
+    let results = state
         .db
-        .query_one(Statement::from_sql_and_values(
+        .query_all(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
             r#"SELECT id, tenant_id, email, password_hash, role, first_name, last_name, is_active
                FROM users
-               WHERE email = $1 AND is_active = true"#,
-            [body.email.clone().into()],
+               WHERE LOWER(email) = LOWER($1) AND is_active = true"#,
+            [body.email.trim().to_string().into()],
         ))
-        .await?
+        .await?;
+
+    if results.is_empty() {
+        return Err(AppError::Unauthorized("Invalid email or password".into()));
+    }
+
+    let argon2 = Argon2::default();
+    let mut matched_user: Option<(Uuid, Uuid, String, String)> = None;
+
+    for row in results {
+        let user_id: Uuid = row
+            .try_get("", "id")
+            .map_err(|e| AppError::InternalError(format!("Failed to read user id: {e}")))?;
+        let tenant_id: Uuid = row
+            .try_get("", "tenant_id")
+            .map_err(|e| AppError::InternalError(format!("Failed to read tenant_id: {e}")))?;
+        let email: String = row
+            .try_get("", "email")
+            .map_err(|e| AppError::InternalError(format!("Failed to read email: {e}")))?;
+        let stored_hash: String = row
+            .try_get("", "password_hash")
+            .map_err(|e| AppError::InternalError(format!("Failed to read password_hash: {e}")))?;
+        let role: String = row
+            .try_get("", "role")
+            .map_err(|e| AppError::InternalError(format!("Failed to read role: {e}")))?;
+
+        if let Ok(parsed_hash) = PasswordHash::new(&stored_hash) {
+            if argon2
+                .verify_password(body.password.as_bytes(), &parsed_hash)
+                .is_ok()
+            {
+                matched_user = Some((user_id, tenant_id, email, role));
+                break;
+            }
+        }
+    }
+
+    let (user_id, tenant_id, email, role) = matched_user
         .ok_or_else(|| AppError::Unauthorized("Invalid email or password".into()))?;
-
-    let user_id: Uuid = result
-        .try_get("", "id")
-        .map_err(|e| AppError::InternalError(format!("Failed to read user id: {e}")))?;
-    let tenant_id: Uuid = result
-        .try_get("", "tenant_id")
-        .map_err(|e| AppError::InternalError(format!("Failed to read tenant_id: {e}")))?;
-    let email: String = result
-        .try_get("", "email")
-        .map_err(|e| AppError::InternalError(format!("Failed to read email: {e}")))?;
-    let stored_hash: String = result
-        .try_get("", "password_hash")
-        .map_err(|e| AppError::InternalError(format!("Failed to read password_hash: {e}")))?;
-    let role: String = result
-        .try_get("", "role")
-        .map_err(|e| AppError::InternalError(format!("Failed to read role: {e}")))?;
-
-    // Verify password
-    let parsed_hash = PasswordHash::new(&stored_hash)
-        .map_err(|e| AppError::InternalError(format!("Invalid stored password hash: {e}")))?;
-
-    Argon2::default()
-        .verify_password(body.password.as_bytes(), &parsed_hash)
-        .map_err(|_| AppError::Unauthorized("Invalid email or password".into()))?;
 
     // Generate JWT
     let token = create_jwt(user_id, tenant_id, &role, &state.config.jwt_secret)?;

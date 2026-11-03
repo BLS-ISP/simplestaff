@@ -68,6 +68,15 @@ where
 
         let claims = token_data.claims;
 
+        if !matches!(
+            claims.role.as_str(),
+            "super_admin" | "admin" | "planner" | "viewer"
+        ) {
+            return Err(AppError::Unauthorized(
+                "Invalid role in token".to_string(),
+            ));
+        }
+
         let user_id = Uuid::parse_str(&claims.sub)
             .map_err(|_| AppError::Unauthorized("Invalid user id in token".to_string()))?;
         let tenant_id = Uuid::parse_str(&claims.tenant_id)
