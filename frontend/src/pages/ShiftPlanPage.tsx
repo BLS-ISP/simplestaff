@@ -86,6 +86,8 @@ export default function ShiftPlanPage() {
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string>('');
   const [onlyMyShifts, setOnlyMyShifts] = useState(false);
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState('');
+  const [onlyScheduledThisWeek, setOnlyScheduledThisWeek] = useState(false);
 
   // Dropdown state for assigning shifts
   const [activeCell, setActiveCell] = useState<{ empId: string; dateStr: string } | null>(null);
@@ -609,14 +611,7 @@ export default function ShiftPlanPage() {
     return emp.weekly_hours;
   };
 
-  const displayedEmployees = useMemo(() => {
-    if (isViewer && onlyMyShifts && user?.email) {
-      return employees.filter((e) => e.email?.toLowerCase() === user.email.toLowerCase());
-    }
-    return employees;
-  }, [employees, isViewer, onlyMyShifts, user?.email]);
-
-  const calculateEmpStats = (emp: Employee) => {
+  const calculateEmpStats = useCallback((emp: Employee) => {
     let shifts = 0;
     let hours = 0;
     let vacations = 0;
@@ -636,7 +631,30 @@ export default function ShiftPlanPage() {
       }
     }
     return { shifts, hours, vacations };
-  };
+  }, [days, assignmentLookup, shiftTypeMap, vacationLookup]);
+
+  const displayedEmployees = useMemo(() => {
+    let list = employees;
+    if (isViewer && onlyMyShifts && user) {
+      list = list.filter(
+        (e) =>
+          (e.user_id && e.user_id === user.id) ||
+          (user.employee_id && e.id === user.employee_id) ||
+          (user.email && e.email?.toLowerCase() === user.email.toLowerCase())
+      );
+    }
+    const q = employeeSearchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((e) => {
+        const fullName = `${e.first_name || ''} ${e.last_name || ''} ${e.email || ''}`.toLowerCase();
+        return fullName.includes(q);
+      });
+    }
+    if (onlyScheduledThisWeek) {
+      list = list.filter((e) => calculateEmpStats(e).shifts > 0);
+    }
+    return list;
+  }, [employees, isViewer, onlyMyShifts, user, employeeSearchQuery, onlyScheduledThisWeek, calculateEmpStats]);
 
   return (
     <div className="animate-fade-in" style={{ padding: 'var(--space-lg)', display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
@@ -802,23 +820,58 @@ export default function ShiftPlanPage() {
                       left: 0,
                       zIndex: 3,
                       background: 'var(--bg-elevated)',
-                      minWidth: 160,
+                      minWidth: 210,
                       padding: 'var(--space-sm) var(--space-md)',
                       textAlign: 'left',
                       color: 'var(--text-secondary)',
                       fontSize: '0.8rem',
                       fontWeight: 600,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
                       borderBottom: '2px solid var(--border-primary)',
                     }}
                   >
-                    {t('shiftPlan.employee', 'Mitarbeiter')}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {t('shiftPlan.employee', 'Mitarbeiter')} ({displayedEmployees.length})
+                      </span>
+                      <button
+                        type="button"
+                        className="no-print"
+                        onClick={() => setOnlyScheduledThisWeek(!onlyScheduledThisWeek)}
+                        title="Nur Mitarbeiter anzeigen, die in dieser Woche Schichten haben"
+                        style={{
+                          background: onlyScheduledThisWeek ? 'rgba(99, 102, 241, 0.25)' : 'rgba(148, 163, 184, 0.1)',
+                          color: onlyScheduledThisWeek ? '#a5b4fc' : 'var(--text-tertiary)',
+                          border: '1px solid var(--glass-border)',
+                          borderRadius: 4,
+                          fontSize: '0.68rem',
+                          padding: '1px 6px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {onlyScheduledThisWeek ? '✓ Eingeplant' : 'Alle'}
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      className="input no-print"
+                      placeholder="🔍 Mitarbeiter filtern..."
+                      value={employeeSearchQuery}
+                      onChange={(e) => setEmployeeSearchQuery(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '4px 8px',
+                        fontSize: '0.75rem',
+                        height: 28,
+                      }}
+                    />
                   </th>
                   {days.map((day, idx) => {
                     const dateStr = toISODateString(day);
                     const isToday = dateStr === todayStr;
                     const isWeekend = idx >= 5;
+                    const dayAssignments = assignments.filter(
+                      (a) => a.assignment_date === dateStr && a.status !== 'sick'
+                    );
                     return (
                       <th
                         key={dateStr}
@@ -832,10 +885,39 @@ export default function ShiftPlanPage() {
                           letterSpacing: '0.05em',
                           borderBottom: '2px solid var(--border-primary)',
                           background: isToday ? 'var(--accent-subtle)' : 'transparent',
-                          minWidth: 110,
+                          minWidth: 115,
                         }}
                       >
-                        {DAY_LABELS[idx]} {formatDateDE(day)}
+                        <div>{DAY_LABELS[idx]} {formatDateDE(day)}</div>
+                        <div style={{
+                          marginTop: 4,
+                          fontSize: '0.68rem',
+                          fontWeight: 600,
+                          textTransform: 'none',
+                          color: dayAssignments.length > 0 ? '#10b981' : 'var(--text-tertiary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 4,
+                        }}>
+                          <span>👥 {dayAssignments.length}</span>
+                          {dayAssignments.slice(0, 5).map((da) => {
+                            const st = shiftTypeMap[da.shift_type_id];
+                            return st ? (
+                              <span
+                                key={da.id}
+                                style={{
+                                  width: 6,
+                                  height: 6,
+                                  borderRadius: '50%',
+                                  background: st.color,
+                                  display: 'inline-block',
+                                }}
+                                title={st.name}
+                              />
+                            ) : null;
+                          })}
+                        </div>
                       </th>
                     );
                   })}
@@ -859,7 +941,15 @@ export default function ShiftPlanPage() {
                   </tr>
                 )}
                 {displayedEmployees.map((emp) => {
-                  const isOwnRow = isViewer && user?.email && emp.email?.toLowerCase() === user.email.toLowerCase();
+                  const isOwnRow =
+                    isViewer &&
+                    user &&
+                    ((emp.user_id && emp.user_id === user.id) ||
+                      (user.employee_id && emp.id === user.employee_id) ||
+                      (user.email && emp.email?.toLowerCase() === user.email.toLowerCase()));
+                  const empWeekStats = calculateEmpStats(emp);
+                  const targetHrs = getTargetHours(emp);
+                  const isOverHours = targetHrs > 0 && empWeekStats.hours > targetHrs;
                   return (
                   <tr key={emp.id} style={isOwnRow ? { background: 'rgba(99, 102, 241, 0.06)' } : undefined}>
                     {/* Employee Name (sticky) */}
@@ -877,10 +967,18 @@ export default function ShiftPlanPage() {
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
-                        maxWidth: 200,
+                        maxWidth: 220,
                       }}
                     >
-                      {getEmployeeName(emp)} {isOwnRow ? '(Ich)' : ''}
+                      <div>{getEmployeeName(emp)} {isOwnRow ? '(Ich)' : ''}</div>
+                      <div style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 500,
+                        color: isOverHours ? '#f59e0b' : 'var(--text-tertiary)',
+                        marginTop: 2,
+                      }}>
+                        ⏱️ {empWeekStats.hours.toFixed(1).replace(/\.0$/, '')} / {targetHrs} Std. ({empWeekStats.shifts} Sch.)
+                      </div>
                     </td>
 
                     {/* Day cells */}

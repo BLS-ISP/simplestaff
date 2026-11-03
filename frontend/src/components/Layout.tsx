@@ -3,11 +3,12 @@
 // Sidebar navigation + main content area
 // ============================================
 
-import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../api/client';
+import type { SystemAnnouncement } from '../types';
 
 const navItems = [
   { path: '/dashboard', icon: '📊', labelKey: 'nav.dashboard', end: true },
@@ -24,8 +25,13 @@ export default function Layout() {
   const { t, i18n } = useTranslation();
   const { user, logout, switchTenant } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [switchingTenant, setSwitchingTenant] = useState(false);
+  const [layoutToast, setLayoutToast] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState<SystemAnnouncement | null>(null);
+  const [dismissedAnnouncement, setDismissedAnnouncement] = useState(false);
+  const [navBadges, setNavBadges] = useState<Record<string, number>>({});
   const [pwModalOpen, setPwModalOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -36,6 +42,46 @@ export default function Layout() {
 
   const currentLang = i18n.language;
   const userRole = user?.role || 'viewer';
+
+  useEffect(() => {
+    if (!user) return;
+    api.tenants
+      .getAnnouncement()
+      .then((ann) => setAnnouncement(ann))
+      .catch(() => {});
+  }, [user?.tenant_id]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    async function loadBadges() {
+      try {
+        const isViewer = userRole === 'viewer';
+        const swaps = await api.shiftSwaps.list().catch(() => []);
+        let swapCount = 0;
+        let vacCount = 0;
+        if (isViewer) {
+          swapCount = swaps.filter((s) => s.status === 'open').length;
+        } else {
+          swapCount = swaps.filter((s) => s.status === 'proposed' || s.status === 'open').length;
+          const vacs = await api.vacations.listAll().catch(() => []);
+          vacCount = vacs.filter((v) => v.status === 'requested').length;
+        }
+        if (!cancelled) {
+          setNavBadges({
+            '/vacations': vacCount,
+            '/shift-swaps': swapCount,
+          });
+        }
+      } catch {
+        // Ignore badge load errors
+      }
+    }
+    loadBadges();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, userRole, location.pathname]);
 
   const filteredNavItems = navItems.filter((item) => {
     if (userRole === 'viewer') {
@@ -94,7 +140,8 @@ export default function Layout() {
       const switchedUser = await switchTenant(targetTenantId);
       window.location.href = switchedUser.role === 'super_admin' ? '/super-admin' : '/dashboard';
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Mandantenwechsel fehlgeschlagen.');
+      setLayoutToast(err instanceof Error ? err.message : 'Mandantenwechsel fehlgeschlagen.');
+      setTimeout(() => setLayoutToast(null), 4000);
     } finally {
       setSwitchingTenant(false);
     }
@@ -192,20 +239,38 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="sidebar-nav">
-          {filteredNavItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.end}
-              className={({ isActive }) =>
-                `sidebar-nav-link ${isActive ? 'sidebar-nav-link-active' : ''}`
-              }
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              <span className="sidebar-nav-icon">{item.icon}</span>
-              <span className="sidebar-nav-label">{t(item.labelKey)}</span>
-            </NavLink>
-          ))}
+          {filteredNavItems.map((item) => {
+            const badgeCount = navBadges[item.path] || 0;
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.end}
+                className={({ isActive }) =>
+                  `sidebar-nav-link ${isActive ? 'sidebar-nav-link-active' : ''}`
+                }
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <span className="sidebar-nav-icon">{item.icon}</span>
+                <span className="sidebar-nav-label" style={{ flex: 1 }}>{t(item.labelKey)}</span>
+                {badgeCount > 0 && (
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '1px 7px',
+                      borderRadius: 999,
+                      background: item.path === '/vacations' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(99, 102, 241, 0.25)',
+                      color: item.path === '/vacations' ? '#fcd34d' : '#a5b4fc',
+                      border: `1px solid ${item.path === '/vacations' ? 'rgba(245, 158, 11, 0.4)' : 'rgba(99, 102, 241, 0.4)'}`,
+                    }}
+                  >
+                    {badgeCount}
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* Bottom Section */}
@@ -353,6 +418,73 @@ export default function Layout() {
       {/* Main Content */}
       <main className="main-content">
         <div className="main-content-inner">
+          {layoutToast && (
+            <div style={{
+              padding: '12px 16px',
+              marginBottom: 16,
+              borderRadius: 10,
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#fca5a5',
+              fontSize: '0.88rem',
+            }}>
+              ⚠️ {layoutToast}
+            </div>
+          )}
+
+          {announcement && announcement.active && announcement.message && !dismissedAnnouncement && (
+            <div
+              style={{
+                padding: '12px 18px',
+                marginBottom: 20,
+                borderRadius: 10,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 12,
+                background:
+                  announcement.level === 'critical'
+                    ? 'rgba(239, 68, 68, 0.14)'
+                    : announcement.level === 'warning'
+                    ? 'rgba(245, 158, 11, 0.14)'
+                    : 'rgba(99, 102, 241, 0.14)',
+                border: `1px solid ${
+                  announcement.level === 'critical'
+                    ? 'rgba(239, 68, 68, 0.4)'
+                    : announcement.level === 'warning'
+                    ? 'rgba(245, 158, 11, 0.4)'
+                    : 'rgba(99, 102, 241, 0.4)'
+                }`,
+                color:
+                  announcement.level === 'critical'
+                    ? '#fca5a5'
+                    : announcement.level === 'warning'
+                    ? '#fcd34d'
+                    : '#c7d2fe',
+                fontSize: '0.88rem',
+              }}
+            >
+              <span>
+                <strong>
+                  {announcement.level === 'critical'
+                    ? '🚨 System-Warnung: '
+                    : announcement.level === 'warning'
+                    ? '⚠️ Wartungshinweis: '
+                    : 'ℹ️ System-Info: '}
+                </strong>
+                {announcement.message}
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                onClick={() => setDismissedAnnouncement(true)}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           <Outlet />
         </div>
       </main>

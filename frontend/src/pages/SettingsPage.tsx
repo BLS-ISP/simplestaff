@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [activeEmployeesCount, setActiveEmployeesCount] = useState<number>(0);
 
   // Business info
   const [name, setName] = useState('');
@@ -101,13 +102,13 @@ export default function SettingsPage() {
   };
 
   const handleDeleteClosedDay = async (id: string) => {
-    if (!confirm('Eintrag wirklich löschen?')) return;
     try {
+      setClosedDaysError(null);
       await api.closedDays.delete(id);
       await fetchClosedDays();
     } catch (err) {
       console.error(err);
-      alert('Fehler beim Löschen des Eintrags.');
+      setClosedDaysError('Fehler beim Löschen des Eintrags.');
     }
   };
 
@@ -122,8 +123,12 @@ export default function SettingsPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await api.tenants.get();
+      const [data, empRes] = await Promise.all([
+        api.tenants.get(),
+        api.employees.list({ is_active: true, per_page: 200 }).catch(() => ({ data: [], total: 0, page: 1, per_page: 200 })),
+      ]);
       setTenant(data);
+      setActiveEmployeesCount(empRes.total ?? empRes.data.length);
       setName(data.name);
 
       const s = data.settings || {};
@@ -284,6 +289,93 @@ export default function SettingsPage() {
           borderColor: 'var(--danger)',
         }}>
           <p style={{ color: 'var(--danger)', margin: 0 }}>❌ {settingsError}</p>
+        </div>
+      )}
+
+      {/* Section 0: Tarif, Lizenz & Mitarbeiter-Kontingent */}
+      {tenant && (
+        <div className="glass-card animate-slide-up" style={{
+          padding: 'var(--space-lg)',
+          marginBottom: 'var(--space-lg)',
+          borderLeft: '4px solid var(--accent)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+            <h2 style={{
+              fontSize: '1.15rem',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              margin: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-sm)',
+            }}>
+              📊 Tarif, Lizenz & Mitarbeiter-Kontingent
+            </h2>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {tenant.settings?.license_note && (
+                <span style={{
+                  fontSize: '0.76rem',
+                  fontWeight: 600,
+                  padding: '3px 10px',
+                  borderRadius: 999,
+                  background: 'rgba(99, 102, 241, 0.15)',
+                  color: '#a5b4fc',
+                  border: '1px solid rgba(99, 102, 241, 0.35)',
+                }}>
+                  🏷️ {tenant.settings.license_note}
+                </span>
+              )}
+              <span style={{
+                fontSize: '0.76rem',
+                fontWeight: 600,
+                padding: '3px 10px',
+                borderRadius: 999,
+                background: 'rgba(16, 185, 129, 0.15)',
+                color: '#6ee7b7',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
+              }}>
+                📅 {tenant.settings?.license_expires_at
+                  ? `Lizenz gültig bis ${new Date(tenant.settings.license_expires_at).toLocaleDateString('de-DE')}`
+                  : 'Lizenz unbegrenzt aktiv'}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem', marginBottom: 6 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Aktive Mitarbeiter im Dienstplan:</span>
+              <strong style={{ color: 'var(--text-primary)' }}>
+                {activeEmployeesCount} / {tenant.settings?.max_employees ?? '∞ Unbegrenzt'}
+              </strong>
+            </div>
+            <div style={{
+              width: '100%',
+              height: 10,
+              borderRadius: 999,
+              background: 'rgba(148, 163, 184, 0.15)',
+              overflow: 'hidden',
+            }}>
+              {(() => {
+                const maxEmp = tenant.settings?.max_employees;
+                const pct = maxEmp ? Math.min(100, Math.round((activeEmployeesCount / maxEmp) * 100)) : 25;
+                const color = !maxEmp ? '#10b981' : pct >= 100 ? '#ef4444' : pct >= 80 ? '#f59e0b' : '#10b981';
+                return (
+                  <div style={{
+                    width: `${pct}%`,
+                    height: '100%',
+                    background: color,
+                    borderRadius: 999,
+                    transition: 'width 0.3s ease',
+                  }} />
+                );
+              })()}
+            </div>
+            {tenant.settings?.max_employees && activeEmployeesCount >= tenant.settings.max_employees && (
+              <p style={{ margin: '8px 0 0 0', fontSize: '0.8rem', color: '#f59e0b' }}>
+                ⚠️ Dein gebuchtes Mitarbeiterlimit ist ausgeschöpft. Bitte kontaktiere BLS.ISP für eine Kontingenterweiterung.
+              </p>
+            )}
+          </div>
         </div>
       )}
 

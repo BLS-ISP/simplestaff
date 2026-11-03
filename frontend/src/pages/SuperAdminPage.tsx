@@ -2,10 +2,28 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import type { TenantAdminInfo, TenantUserAdminInfo } from '../api/client';
+import type { SystemAnnouncement } from '../types';
 import { useAuth } from '../hooks/useAuth';
 
 type StatusFilter = 'all' | 'active' | 'suspended' | 'limit_warning' | 'license_warning';
-type SortBy = 'created_desc' | 'name_asc' | 'employees_desc';
+type SortBy = 'created_desc' | 'name_asc' | 'employees_desc' | 'assignments_desc';
+type ViewMode = 'cards' | 'table';
+
+function generateSecurePassword(length = 12): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*';
+  const arr = new Uint32Array(length);
+  window.crypto.getRandomValues(arr);
+  return Array.from(arr, (n) => chars[n % chars.length]).join('');
+}
+
+function computeLicenseDateOffset(monthsToAdd: number | 'year_end'): string {
+  const d = new Date();
+  if (monthsToAdd === 'year_end') {
+    return `${d.getFullYear()}-12-31`;
+  }
+  d.setMonth(d.getMonth() + monthsToAdd);
+  return d.toISOString().slice(0, 10);
+}
 
 function isLicenseExpired(expiresAt: string | null): boolean {
   if (!expiresAt) return false;
@@ -38,10 +56,44 @@ export default function SuperAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
 
-  // Search, Filter & Sort
+  // Search, Filter, Sort & View Mode
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('created_desc');
+  const [viewMode, setViewMode] = useState<ViewMode>('cards');
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Global System Announcement State
+  const [showAnnouncementPanel, setShowAnnouncementPanel] = useState(false);
+  const [announcement, setAnnouncement] = useState<SystemAnnouncement>({
+    message: '',
+    level: 'info',
+    active: false,
+  });
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3500);
+  };
+
+  const copyCredentialsToClipboard = (params: {
+    tenantName: string;
+    email: string;
+    username?: string;
+    password?: string;
+  }) => {
+    const loginUrl = `${window.location.origin}/login`;
+    const lines = [
+      `🏢 SimpleStaff Zugang – ${params.tenantName}`,
+      `🔗 Login-URL: ${loginUrl}`,
+      `✉️ E-Mail: ${params.email}`,
+      ...(params.username ? [`👤 Benutzername: ${params.username}`] : []),
+      ...(params.password ? [`🔑 Passwort: ${params.password}`] : []),
+    ];
+    navigator.clipboard.writeText(lines.join('\n'));
+    showToast('📋 Zugangsdaten in die Zwischenablage kopiert!');
+  };
 
   // Modal States - Create & Edit Tenant
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -117,7 +169,23 @@ export default function SuperAdminPage() {
 
   useEffect(() => {
     fetchTenants();
+    api.admin.getAnnouncement().then(setAnnouncement).catch(() => {});
   }, []);
+
+  const handleSaveAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSavingAnnouncement(true);
+      const updated = await api.admin.updateAnnouncement(announcement);
+      setAnnouncement(updated);
+      showToast(updated.active ? '📢 System-Ankündigung aktiviert!' : '📢 System-Ankündigung deaktiviert.');
+      setShowAnnouncementPanel(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ankündigung konnte nicht gespeichert werden.');
+    } finally {
+      setSavingAnnouncement(false);
+    }
+  };
 
   const fetchTenants = async () => {
     try {
@@ -204,6 +272,9 @@ export default function SuperAdminPage() {
         }
         if (sortBy === 'employees_desc') {
           return b.active_employees_count - a.active_employees_count;
+        }
+        if (sortBy === 'assignments_desc') {
+          return (b.assignments_count || 0) - (a.assignments_count || 0);
         }
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
@@ -607,6 +678,13 @@ export default function SuperAdminPage() {
             {user?.username && <span style={{ color: 'var(--text-tertiary)' }}> (@{user.username})</span>}
           </span>
           <button
+            className={`btn btn-sm ${announcement.active ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setShowAnnouncementPanel(!showAnnouncementPanel)}
+            title="Systemweite Info- oder Wartungsmeldung für alle Mandanten schalten"
+          >
+            📢 Wartungsbanner {announcement.active ? '(Aktiv)' : ''}
+          </button>
+          <button
             className="btn btn-secondary btn-sm"
             onClick={() => {
               setPwError(null);
@@ -625,8 +703,79 @@ export default function SuperAdminPage() {
         </div>
       </header>
 
+      {/* Floating Toast Notification */}
+      {toastMsg && (
+        <div style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 9999,
+          padding: '12px 18px',
+          borderRadius: 10,
+          background: 'rgba(16, 185, 129, 0.95)',
+          color: '#fff',
+          fontWeight: 600,
+          fontSize: '0.88rem',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+        }}>
+          {toastMsg}
+        </div>
+      )}
+
       {/* Main Content Area */}
       <main style={{ flex: 1, padding: '28px', maxWidth: '1320px', width: '100%', margin: '0 auto' }}>
+        {/* Global System Announcement Editor Panel */}
+        {showAnnouncementPanel && (
+          <form
+            onSubmit={handleSaveAnnouncement}
+            className="glass-card animate-slide-up"
+            style={{
+              padding: '18px 22px',
+              marginBottom: '24px',
+              borderLeft: '4px solid var(--accent)',
+              background: 'rgba(99, 102, 241, 0.08)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', color: 'var(--text-primary)' }}>
+                📢 Globale System-Ankündigung / Wartungsmeldung (für alle Mandanten sichtbar)
+              </h3>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowAnnouncementPanel(false)}>
+                ✕
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px auto auto', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                className="input"
+                placeholder="z.B. Geplante Server-Wartung heute von 23:00 bis 23:30 Uhr..."
+                value={announcement.message}
+                onChange={(e) => setAnnouncement({ ...announcement, message: e.target.value })}
+              />
+              <select
+                className="input"
+                value={announcement.level}
+                onChange={(e) => setAnnouncement({ ...announcement, level: e.target.value as SystemAnnouncement['level'] })}
+              >
+                <option value="info">ℹ️ Information (Blau)</option>
+                <option value="warning">⚠️ Warnung (Gelb)</option>
+                <option value="critical">🚨 Kritisch (Rot)</option>
+              </select>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                <input
+                  type="checkbox"
+                  checked={announcement.active}
+                  onChange={(e) => setAnnouncement({ ...announcement, active: e.target.checked })}
+                  style={{ width: 16, height: 16 }}
+                />
+                Banner aktiv
+              </label>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={savingAnnouncement}>
+                {savingAnnouncement ? 'Speichere...' : '💾 Banner speichern'}
+              </button>
+            </div>
+          </form>
+        )}
         {/* KPI Dashboard Row */}
         <div style={{
           display: 'grid',
@@ -756,7 +905,29 @@ export default function SuperAdminPage() {
               <option value="created_desc">Sortierung: Neueste zuerst</option>
               <option value="name_asc">Sortierung: Name (A–Z)</option>
               <option value="employees_desc">Sortierung: Meiste Mitarbeiter</option>
+              <option value="assignments_desc">Sortierung: Aktivste Nutzung (Schichten)</option>
             </select>
+
+            <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--glass-border)' }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${viewMode === 'cards' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setViewMode('cards')}
+                style={{ borderRadius: 0, border: 'none' }}
+                title="Detail-Kartenansicht"
+              >
+                🃏 Karten
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${viewMode === 'table' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setViewMode('table')}
+                style={{ borderRadius: 0, border: 'none' }}
+                title="Kompakte Tabellenansicht"
+              >
+                📋 Tabelle
+              </button>
+            </div>
           </div>
         </div>
 
@@ -786,6 +957,151 @@ export default function SuperAdminPage() {
             <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
               Passe deine Suchbegriffe oder Filter an oder lege einen neuen Mandanten an.
             </p>
+          </div>
+        ) : viewMode === 'table' ? (
+          <div className="glass-card animate-slide-up" style={{ overflowX: 'auto', padding: 0 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--glass-border)', background: 'rgba(148, 163, 184, 0.06)', textAlign: 'left' }}>
+                  <th style={{ padding: '14px 18px', color: 'var(--text-secondary)', fontWeight: 700 }}>Betrieb & Slug</th>
+                  <th style={{ padding: '14px 14px', color: 'var(--text-secondary)', fontWeight: 700 }}>Status & Lizenz</th>
+                  <th style={{ padding: '14px 14px', color: 'var(--text-secondary)', fontWeight: 700 }}>Mitarbeiter (Aktiv/Limit)</th>
+                  <th style={{ padding: '14px 14px', color: 'var(--text-secondary)', fontWeight: 700 }}>Nutzung</th>
+                  <th style={{ padding: '14px 14px', color: 'var(--text-secondary)', fontWeight: 700 }}>Master-Accounts</th>
+                  <th style={{ padding: '14px 18px', color: 'var(--text-secondary)', fontWeight: 700, textAlign: 'right' }}>Aktionen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTenants.map((t) => {
+                  const isSystem = t.slug === 'system';
+                  const expired = isLicenseExpired(t.license_expires_at);
+                  const expiringSoon = isLicenseExpiringSoon(t.license_expires_at);
+                  const utilizationPct = t.max_employees
+                    ? Math.min(100, Math.round((t.active_employees_count / t.max_employees) * 100))
+                    : null;
+                  const barColor =
+                    utilizationPct === null
+                      ? '#10b981'
+                      : utilizationPct >= 100
+                      ? '#ef4444'
+                      : utilizationPct >= 80
+                      ? '#f59e0b'
+                      : '#10b981';
+
+                  return (
+                    <tr
+                      key={t.id}
+                      style={{
+                        borderBottom: '1px solid var(--glass-border)',
+                        background: t.is_suspended ? 'rgba(239, 68, 68, 0.04)' : 'transparent',
+                      }}
+                    >
+                      <td style={{ padding: '12px 18px' }}>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>
+                          {t.name}
+                        </div>
+                        <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)' }}>
+                          <code>{t.slug}</code> • {formatDate(t.created_at)}
+                        </div>
+                      </td>
+
+                      <td style={{ padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                          {isSystem ? (
+                            <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(139,92,246,0.2)', color: '#c4b5fd' }}>
+                              SYSTEM
+                            </span>
+                          ) : t.is_suspended ? (
+                            <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(239,68,68,0.2)', color: '#fca5a5' }}>
+                              🔒 GESPERRT
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(16,185,129,0.18)', color: '#6ee7b7' }}>
+                              🟢 AKTIV
+                            </span>
+                          )}
+                          {t.license_note && (
+                            <span style={{ fontSize: '0.73rem', color: '#a5b4fc' }}>🏷️ {t.license_note}</span>
+                          )}
+                          {t.license_expires_at && (
+                            <span style={{ fontSize: '0.73rem', color: expired ? '#ef4444' : expiringSoon ? '#f59e0b' : 'var(--text-tertiary)' }}>
+                              📅 bis {formatDate(t.license_expires_at)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td style={{ padding: '12px 14px', minWidth: 160 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: 4 }}>
+                          <strong style={{ color: 'var(--text-primary)' }}>
+                            {t.active_employees_count} / {t.max_employees ?? '∞'}
+                          </strong>
+                          {utilizationPct !== null && (
+                            <span style={{ color: barColor, fontWeight: 600 }}>{utilizationPct}%</span>
+                          )}
+                        </div>
+                        <div style={{ width: '100%', height: 6, borderRadius: 999, background: 'rgba(148,163,184,0.15)', overflow: 'hidden' }}>
+                          <div style={{ width: utilizationPct !== null ? `${utilizationPct}%` : '30%', height: '100%', background: barColor }} />
+                        </div>
+                      </td>
+
+                      <td style={{ padding: '12px 14px' }}>
+                        <div style={{ fontSize: '0.8rem', color: (t.assignments_count || 0) > 0 ? '#10b981' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                          📋 {t.assignments_count || 0} Schichten
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)' }}>
+                          🔄 {t.shift_types_count} Schichttypen • 🔐 {t.users_count} Logins
+                        </div>
+                      </td>
+
+                      <td style={{ padding: '12px 14px' }}>
+                        {t.admins.slice(0, 2).map((adm) => (
+                          <div key={adm.id} style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 2 }}>
+                            <strong style={{ color: 'var(--text-primary)' }}>{adm.first_name} {adm.last_name}</strong>{' '}
+                            {adm.username ? <span style={{ color: 'var(--accent)' }}>@{adm.username}</span> : <span>({adm.email})</span>}
+                            {adm.linked_employee_id && <span title="Im Dienstplan"> 👤</span>}
+                          </div>
+                        ))}
+                        {t.admins.length > 2 && (
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>+{t.admins.length - 2} weitere</span>
+                        )}
+                      </td>
+
+                      <td style={{ padding: '12px 18px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', gap: 6 }}>
+                          {!isSystem && (
+                            <button
+                              className="btn btn-primary btn-sm"
+                              disabled={impersonatingId === t.id}
+                              onClick={() => handleImpersonate(t)}
+                              title="Support-Login"
+                            >
+                              🚀 Öffnen
+                            </button>
+                          )}
+                          <button className="btn btn-secondary btn-sm" onClick={() => handleOpenUsersModal(t)} title="Benutzer & Admins">
+                            👥 ({t.users_count})
+                          </button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => handleOpenEdit(t)} title="Lizenz & Details">
+                            ✏️
+                          </button>
+                          {!isSystem && (
+                            <button className="btn btn-secondary btn-sm" onClick={() => handleQuickToggleSuspend(t)} title={t.is_suspended ? 'Freigeben' : 'Sperren'}>
+                              {t.is_suspended ? '🔓' : '🔒'}
+                            </button>
+                          )}
+                          {!isSystem && (
+                            <button className="btn btn-danger btn-sm" onClick={() => handleDeleteTenant(t.id, t.name)} title="Löschen">
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -948,6 +1264,13 @@ export default function SuperAdminPage() {
                           <span>Angelegt: <strong style={{ color: 'var(--text-secondary)' }}>{formatDate(t.created_at)}</strong></span>
                           <span>•</span>
                           <span>Schichttypen: <strong style={{ color: 'var(--text-secondary)' }}>{t.shift_types_count}</strong></span>
+                          <span>•</span>
+                          <span>
+                            Aktivität:{' '}
+                            <strong style={{ color: (t.assignments_count || 0) > 0 ? '#10b981' : 'var(--text-secondary)' }}>
+                              📋 {t.assignments_count || 0} geplante Schichten
+                            </strong>
+                          </span>
                           <span>•</span>
                           <span>ID: <code style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{t.id}</code></span>
                         </div>
@@ -1194,6 +1517,14 @@ export default function SuperAdminPage() {
                     value={licenseExpiresAt}
                     onChange={(e) => setLicenseExpiresAt(e.target.value)}
                   />
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 6 }}>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: '0.7rem' }} onClick={() => setLicenseExpiresAt(computeLicenseDateOffset(1))}>+1M</button>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: '0.7rem' }} onClick={() => setLicenseExpiresAt(computeLicenseDateOffset(12))}>+1J</button>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: '0.7rem' }} onClick={() => setLicenseExpiresAt(computeLicenseDateOffset('year_end'))}>31.12.</button>
+                    {licenseExpiresAt && (
+                      <button type="button" className="btn btn-secondary btn-sm" style={{ padding: '2px 6px', fontSize: '0.7rem' }} onClick={() => setLicenseExpiresAt('')}>∞</button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1264,13 +1595,42 @@ export default function SuperAdminPage() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: '14px' }}>
-                  <label>Manager-Passwort *</label>
+                  <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Manager-Passwort *</span>
+                    <span style={{ display: 'inline-flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                        onClick={() => setManagerPassword(generateSecurePassword())}
+                      >
+                        🎲 Passwort generieren
+                      </button>
+                      {managerEmail && managerPassword && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+                          onClick={() =>
+                            copyCredentialsToClipboard({
+                              tenantName: name || 'Neuer Betrieb',
+                              email: managerEmail,
+                              username: managerUsername || (slug ? `admin.${slug}` : undefined),
+                              password: managerPassword,
+                            })
+                          }
+                        >
+                          📋 Zugangsdaten kopieren
+                        </button>
+                      )}
+                    </span>
+                  </label>
                   <input
-                    type="password"
+                    type="text"
                     required
                     value={managerPassword}
                     onChange={(e) => setManagerPassword(e.target.value)}
-                    placeholder="Mindestens 8 Zeichen"
+                    placeholder="Mindestens 8 Zeichen (oder oben generieren)"
                   />
                 </div>
 
@@ -1417,20 +1777,48 @@ export default function SuperAdminPage() {
 
               <div className="form-group" style={{ marginBottom: '18px' }}>
                 <label>Lizenz gültig bis (Optional – nach Ablauf wird der Login blockiert)</label>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   <input
                     type="date"
                     value={editLicenseExpiresAt}
                     onChange={(e) => setEditLicenseExpiresAt(e.target.value)}
-                    style={{ flex: 1 }}
+                    style={{ flex: '1 1 180px' }}
                   />
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setEditLicenseExpiresAt(computeLicenseDateOffset(1))}
+                  >
+                    +1 Monat
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setEditLicenseExpiresAt(computeLicenseDateOffset(6))}
+                  >
+                    +6 Monate
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setEditLicenseExpiresAt(computeLicenseDateOffset(12))}
+                  >
+                    +1 Jahr
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setEditLicenseExpiresAt(computeLicenseDateOffset('year_end'))}
+                  >
+                    Jahresende
+                  </button>
                   {editLicenseExpiresAt && (
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
                       onClick={() => setEditLicenseExpiresAt('')}
                     >
-                      Unbegrenzt
+                      ∞ Unbegrenzt
                     </button>
                   )}
                 </div>
@@ -1633,9 +2021,40 @@ export default function SuperAdminPage() {
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label>Initiales Passwort *</label>
+                    <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Initiales Passwort *</span>
+                      <span style={{ display: 'inline-flex', gap: 4 }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '1px 6px', fontSize: '0.7rem' }}
+                          onClick={() => setNewUserPassword(generateSecurePassword())}
+                          title="Sicheres Passwort generieren"
+                        >
+                          🎲
+                        </button>
+                        {newUserEmail && newUserPassword && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '1px 6px', fontSize: '0.7rem' }}
+                            onClick={() =>
+                              copyCredentialsToClipboard({
+                                tenantName: usersModalTenant.name,
+                                email: newUserEmail,
+                                username: newUserUsername || undefined,
+                                password: newUserPassword,
+                              })
+                            }
+                            title="Zugangsdaten kopieren"
+                          >
+                            📋
+                          </button>
+                        )}
+                      </span>
+                    </label>
                     <input
-                      type="password"
+                      type="text"
                       required
                       minLength={8}
                       value={newUserPassword}
@@ -1766,9 +2185,38 @@ export default function SuperAdminPage() {
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
-                    <label>Neues Passwort setzen (Optional)</label>
+                    <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>Neues Passwort (Optional)</span>
+                      <span style={{ display: 'inline-flex', gap: 4 }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '1px 6px', fontSize: '0.7rem' }}
+                          onClick={() => setEditUserPassword(generateSecurePassword())}
+                          title="Sicheres Passwort generieren"
+                        >
+                          🎲
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '1px 6px', fontSize: '0.7rem' }}
+                          onClick={() =>
+                            copyCredentialsToClipboard({
+                              tenantName: usersModalTenant.name,
+                              email: editUserEmail,
+                              username: editUserUsername || undefined,
+                              password: editUserPassword || undefined,
+                            })
+                          }
+                          title="Zugangsdaten kopieren"
+                        >
+                          📋
+                        </button>
+                      </span>
+                    </label>
                     <input
-                      type="password"
+                      type="text"
                       value={editUserPassword}
                       onChange={(e) => setEditUserPassword(e.target.value)}
                       placeholder="Leer lassen = unverändert"

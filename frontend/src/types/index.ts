@@ -186,6 +186,17 @@ export interface TenantSettings {
   min_rest_hours?: number;
   max_weekly_hours?: number;
   break_rules?: BreakRule[];
+  max_employees?: number | null;
+  license_note?: string | null;
+  license_expires_at?: string | null;
+  is_suspended?: boolean;
+  suspension_reason?: string | null;
+}
+
+export interface SystemAnnouncement {
+  message: string;
+  level: 'info' | 'warning' | 'critical';
+  active: boolean;
 }
 
 export interface BreakRule {

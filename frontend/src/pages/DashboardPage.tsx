@@ -174,6 +174,49 @@ export default function DashboardPage() {
   const [pendingVacationsCount, setPendingVacationsCount] = useState(0);
   const [allVacations, setAllVacations] = useState<(Vacation & { employee_name: string })[]>([]);
   const [shiftSwaps, setShiftSwaps] = useState<ShiftSwap[]>([]);
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
+  const [dashboardNotice, setDashboardNotice] = useState<string | null>(null);
+
+  const handleQuickVacationDecision = async (empId: string, vacId: string, status: 'approved' | 'rejected') => {
+    try {
+      setActionBusyId(vacId);
+      if (status === 'approved') {
+        await api.vacations.approve(empId, vacId);
+      } else {
+        await api.vacations.reject(empId, vacId);
+      }
+      setAllVacations((prev) => {
+        const next = prev.map((v) => (v.id === vacId ? { ...v, status } : v));
+        setPendingVacationsCount(next.filter((v) => v.status === 'requested').length);
+        return next;
+      });
+      setDashboardNotice(status === 'approved' ? '✅ Urlaubsantrag wurde genehmigt.' : '✕ Urlaubsantrag wurde abgelehnt.');
+      setTimeout(() => setDashboardNotice(null), 3500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Aktion fehlgeschlagen');
+    } finally {
+      setActionBusyId(null);
+    }
+  };
+
+  const handleQuickSwapDecision = async (swapId: string, decision: 'approve' | 'reject') => {
+    try {
+      setActionBusyId(swapId);
+      if (decision === 'approve') {
+        await api.shiftSwaps.approve(swapId);
+      } else {
+        await api.shiftSwaps.reject(swapId);
+      }
+      const updatedSwaps = await api.shiftSwaps.list().catch(() => [] as ShiftSwap[]);
+      setShiftSwaps(updatedSwaps);
+      setDashboardNotice(decision === 'approve' ? '✅ Schichttausch genehmigt & Dienstplan aktualisiert.' : '✕ Tauschvorschlag abgelehnt.');
+      setTimeout(() => setDashboardNotice(null), 3500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Aktion fehlgeschlagen');
+    } finally {
+      setActionBusyId(null);
+    }
+  };
 
   useEffect(() => {
     async function fetchData() {
@@ -260,6 +303,23 @@ export default function DashboardPage() {
         </h1>
         <p style={{ color: 'var(--text-secondary)' }}>{formatDateDE(new Date())}</p>
       </div>
+
+      {dashboardNotice && (
+        <div
+          className="glass-card animate-fade-in"
+          style={{
+            padding: '12px 18px',
+            marginBottom: 24,
+            background: 'rgba(16, 185, 129, 0.14)',
+            borderColor: 'rgba(16, 185, 129, 0.4)',
+            color: '#6ee7b7',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+          }}
+        >
+          {dashboardNotice}
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20, marginBottom: 40 }}>
@@ -485,10 +545,32 @@ export default function DashboardPage() {
                         {sw.status === 'open' ? 'Offen' : sw.status === 'proposed' ? 'Vorgeschlagen' : sw.status === 'approved' ? 'Genehmigt' : 'Abgelehnt'}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="btn btn-sm btn-secondary" onClick={() => navigate('/shift-swaps')}>
-                        Öffnen →
-                      </button>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', gap: 6 }}>
+                        {sw.status === 'proposed' && (
+                          <>
+                            <button
+                              className="btn btn-sm btn-primary"
+                              disabled={actionBusyId === sw.id}
+                              onClick={() => handleQuickSwapDecision(sw.id, 'approve')}
+                              title="Vorgeschlagene Übernahme direkt genehmigen"
+                            >
+                              ✓ Genehmigen
+                            </button>
+                            <button
+                              className="btn btn-sm btn-danger"
+                              disabled={actionBusyId === sw.id}
+                              onClick={() => handleQuickSwapDecision(sw.id, 'reject')}
+                              title="Vorschlag ablehnen"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                        <button className="btn btn-sm btn-secondary" onClick={() => navigate('/shift-swaps')}>
+                          Öffnen →
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -508,10 +590,32 @@ export default function DashboardPage() {
                         {v.status === 'approved' ? 'Genehmigt' : v.status === 'rejected' ? 'Abgelehnt' : 'Ausstehend'}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="btn btn-sm btn-secondary" onClick={() => navigate('/vacations')}>
-                        Öffnen →
-                      </button>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', gap: 6 }}>
+                        {v.status === 'requested' && (
+                          <>
+                            <button
+                              className="btn btn-sm btn-primary"
+                              disabled={actionBusyId === v.id}
+                              onClick={() => handleQuickVacationDecision(v.employee_id, v.id, 'approved')}
+                              title="Urlaubsantrag direkt genehmigen"
+                            >
+                              ✓ Genehmigen
+                            </button>
+                            <button
+                              className="btn btn-sm btn-danger"
+                              disabled={actionBusyId === v.id}
+                              onClick={() => handleQuickVacationDecision(v.employee_id, v.id, 'rejected')}
+                              title="Urlaubsantrag ablehnen"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                        <button className="btn btn-sm btn-secondary" onClick={() => navigate('/vacations')}>
+                          Öffnen →
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

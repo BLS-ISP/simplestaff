@@ -20,6 +20,7 @@ import type {
   Tenant,
   UpdateTenantRequest,
   UpdateTenantSettingsRequest,
+  SystemAnnouncement,
   LoginRequest,
   LoginResponse,
   User,
@@ -443,6 +444,8 @@ const tenants = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+
+  getAnnouncement: () => request<SystemAnnouncement>('/tenants/announcement'),
 };
 
 // ---------------------------------------------------------------------------
@@ -578,6 +581,7 @@ export interface TenantAdminInfo {
   total_employees_count: number;
   users_count: number;
   shift_types_count: number;
+  assignments_count: number;
   admins: TenantUserAdminInfo[];
   created_at: string;
   updated_at: string;
@@ -677,6 +681,15 @@ const admin = {
   impersonateTenant: (tenantId: string) =>
     request<LoginResponse>(`/admin/tenants/${tenantId}/impersonate`, {
       method: 'POST',
+    }),
+
+  getAnnouncement: () =>
+    request<SystemAnnouncement>('/admin/announcement'),
+
+  updateAnnouncement: (data: SystemAnnouncement) =>
+    request<SystemAnnouncement>('/admin/announcement', {
+      method: 'PUT',
+      body: JSON.stringify(data),
     }),
 };
 

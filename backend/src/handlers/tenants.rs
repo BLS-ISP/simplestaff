@@ -3,12 +3,13 @@ use axum::{
     routing::{get, put},
     Json, Router,
 };
-use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::AppState;
 use crate::errors::AppError;
+use crate::handlers::admin::SystemAnnouncement;
 use crate::middleware::auth::AuthUser;
 use crate::middleware::tenant::execute_with_tenant;
 use crate::models::tenant;
@@ -69,6 +70,32 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(get_current_tenant).put(update_tenant))
         .route("/settings", put(update_tenant_settings))
+        .route("/announcement", get(get_public_announcement))
+}
+
+/// GET /announcement – Return active global system announcement for any authenticated user
+pub async fn get_public_announcement(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+) -> Result<Json<SystemAnnouncement>, AppError> {
+    let sys_tenant = tenant::Entity::find()
+        .filter(tenant::Column::Slug.eq("system"))
+        .one(&state.db)
+        .await?;
+
+    if let Some(st) = sys_tenant {
+        if let Some(ann) = st.settings.get("system_announcement") {
+            if let Ok(parsed) = serde_json::from_value::<SystemAnnouncement>(ann.clone()) {
+                return Ok(Json(parsed));
+            }
+        }
+    }
+
+    Ok(Json(SystemAnnouncement {
+        message: String::new(),
+        level: "info".to_string(),
+        active: false,
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +180,7 @@ pub async fn update_tenant_settings(
                 "license_note",
                 "license_expires_at",
                 "week_templates",
+                "system_announcement",
             ];
 
             let mut new_settings = payload.settings;

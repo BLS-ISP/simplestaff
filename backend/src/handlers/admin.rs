@@ -19,7 +19,7 @@ use crate::errors::AppError;
 use crate::handlers::auth::{LoginResponse, LoginUserInfo};
 use crate::middleware::auth::{create_jwt_with_verified, AuthUser};
 use crate::middleware::tenant::{execute_with_tenant, set_tenant_context};
-use crate::models::{employee, shift_type, tenant, user};
+use crate::models::{employee, shift_assignment, shift_type, tenant, user};
 
 // ---------------------------------------------------------------------------
 // DTOs
@@ -53,6 +53,7 @@ pub struct TenantAdminResponse {
     pub total_employees_count: u64,
     pub users_count: u64,
     pub shift_types_count: u64,
+    pub assignments_count: u64,
     pub admins: Vec<TenantUserAdminInfo>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
@@ -153,7 +154,7 @@ async fn build_tenant_admin_response(
         .map(|s| s.to_string())
         .filter(|s| !s.trim().is_empty());
 
-    let (active_emp_count, total_emp_count, users_count, shift_types_count, admins) =
+    let (active_emp_count, total_emp_count, users_count, shift_types_count, assignments_count, admins) =
         execute_with_tenant(db, &tid, |txn| {
             Box::pin(async move {
                 let active_emps = employee::Entity::find()
@@ -177,6 +178,11 @@ async fn build_tenant_admin_response(
                 let st_count = shift_type::Entity::find()
                     .filter(shift_type::Column::TenantId.eq(tid))
                     .filter(shift_type::Column::IsActive.eq(true))
+                    .count(txn)
+                    .await?;
+
+                let ass_count = shift_assignment::Entity::find()
+                    .filter(shift_assignment::Column::TenantId.eq(tid))
                     .count(txn)
                     .await?;
 
@@ -214,7 +220,7 @@ async fn build_tenant_admin_response(
                     }
                 }
 
-                Ok((active_emps, total_emps, u_count, st_count, admin_list))
+                Ok((active_emps, total_emps, u_count, st_count, ass_count, admin_list))
             })
         })
         .await?;
@@ -232,6 +238,7 @@ async fn build_tenant_admin_response(
         total_employees_count: total_emp_count,
         users_count,
         shift_types_count,
+        assignments_count,
         admins,
         created_at: t.created_at,
         updated_at: t.updated_at,
@@ -241,6 +248,13 @@ async fn build_tenant_admin_response(
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SystemAnnouncement {
+    pub message: String,
+    pub level: String, // "info" | "warning" | "critical"
+    pub active: bool,
+}
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -255,6 +269,10 @@ pub fn router() -> Router<AppState> {
             put(update_tenant_user).delete(delete_tenant_user),
         )
         .route("/tenants/{id}/impersonate", post(impersonate_tenant))
+        .route(
+            "/announcement",
+            get(get_announcement).put(update_announcement),
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -1025,3 +1043,71 @@ pub async fn impersonate_tenant(
         available_tenants: vec![],
     }))
 }
+
+/// GET /api/admin/announcement – Read global system announcement
+pub async fn get_announcement(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<SystemAnnouncement>, AppError> {
+    require_super_admin(&auth)?;
+
+    let sys_tenant = tenant::Entity::find()
+        .filter(tenant::Column::Slug.eq("system"))
+        .one(&state.db)
+        .await?;
+
+    if let Some(st) = sys_tenant {
+        if let Some(ann) = st.settings.get("system_announcement") {
+            if let Ok(parsed) = serde_json::from_value::<SystemAnnouncement>(ann.clone()) {
+                return Ok(Json(parsed));
+            }
+        }
+    }
+
+    Ok(Json(SystemAnnouncement {
+        message: String::new(),
+        level: "info".to_string(),
+        active: false,
+    }))
+}
+
+/// PUT /api/admin/announcement – Update global system announcement
+pub async fn update_announcement(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(payload): Json<SystemAnnouncement>,
+) -> Result<Json<SystemAnnouncement>, AppError> {
+    require_super_admin(&auth)?;
+
+    let sys_tenant = tenant::Entity::find()
+        .filter(tenant::Column::Slug.eq("system"))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| AppError::NotFound("System-Mandant nicht gefunden".to_string()))?;
+
+    let level = match payload.level.as_str() {
+        "warning" | "critical" => payload.level.clone(),
+        _ => "info".to_string(),
+    };
+    let clean = SystemAnnouncement {
+        message: payload.message.trim().to_string(),
+        level,
+        active: payload.active && !payload.message.trim().is_empty(),
+    };
+
+    let mut settings = sys_tenant.settings.clone();
+    if let Some(obj) = settings.as_object_mut() {
+        obj.insert(
+            "system_announcement".to_string(),
+            serde_json::to_value(&clean).unwrap_or(serde_json::json!(null)),
+        );
+    }
+
+    let mut active_model: tenant::ActiveModel = sys_tenant.into();
+    active_model.settings = Set(settings);
+    active_model.updated_at = Set(chrono::Utc::now().into());
+    active_model.update(&state.db).await?;
+
+    Ok(Json(clean))
+}
+
