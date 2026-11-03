@@ -91,14 +91,18 @@ export default function Layout() {
     if (!user || targetTenantId === user.tenant_id || switchingTenant) return;
     try {
       setSwitchingTenant(true);
-      await switchTenant(targetTenantId);
-      window.location.href = '/dashboard';
+      const switchedUser = await switchTenant(targetTenantId);
+      window.location.href = switchedUser.role === 'super_admin' ? '/super-admin' : '/dashboard';
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Mandantenwechsel fehlgeschlagen.');
     } finally {
       setSwitchingTenant(false);
     }
   };
+
+  const superAdminChoice = user?.role !== 'super_admin'
+    ? user?.available_tenants?.find((tc) => tc.role === 'super_admin')
+    : undefined;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -134,8 +138,38 @@ export default function Layout() {
           </div>
         </div>
 
+        {/* Super-Admin Impersonation Banner */}
+        {superAdminChoice && (
+          <div style={{
+            padding: '10px 12px',
+            borderBottom: '1px solid rgba(245, 158, 11, 0.35)',
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(234, 88, 12, 0.12))',
+          }}>
+            <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#fbbf24', marginBottom: 6 }}>
+              🛡️ Support-Modus aktiv
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={switchingTenant}
+              onClick={() => handleSwitchTenant(superAdminChoice.tenant_id)}
+              style={{
+                width: '100%',
+                justifyContent: 'center',
+                fontSize: '0.78rem',
+                padding: '6px 10px',
+                borderColor: 'rgba(245, 158, 11, 0.45)',
+                color: '#fef3c7',
+                background: 'rgba(245, 158, 11, 0.2)',
+              }}
+            >
+              {switchingTenant ? 'Wechsle...' : '⬅️ Zurück zum Super-Admin'}
+            </button>
+          </div>
+        )}
+
         {/* Multi-Tenant Switcher (shown when user has accounts in multiple tenants) */}
-        {user?.available_tenants && user.available_tenants.length > 1 && (
+        {user?.available_tenants && user.available_tenants.filter((tc) => tc.role !== 'super_admin').length > 1 && (
           <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--glass-border)', background: 'rgba(99, 102, 241, 0.05)' }}>
             <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-secondary)', marginBottom: 4 }}>
               🏢 Betrieb wechseln
@@ -147,7 +181,7 @@ export default function Layout() {
               onChange={(e) => handleSwitchTenant(e.target.value)}
               style={{ width: '100%', padding: '6px 8px', fontSize: '0.82rem', height: 34 }}
             >
-              {user.available_tenants.map((tc) => (
+              {user.available_tenants.filter((tc) => tc.role !== 'super_admin').map((tc) => (
                 <option key={tc.tenant_id} value={tc.tenant_id}>
                   {tc.tenant_name} ({tc.role})
                 </option>

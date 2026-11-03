@@ -366,6 +366,15 @@ pub async fn login(
     };
 
     if let Some(chosen) = selected_row {
+        if chosen.role != "super_admin" {
+            if let Some(t_model) = tenant::Entity::find_by_id(chosen.tenant_id)
+                .one(&state.db)
+                .await?
+            {
+                tenant::check_tenant_license_active(&t_model.settings)?;
+            }
+        }
+
         let token = create_jwt_with_verified(
             chosen.user_id,
             chosen.tenant_id,
@@ -501,30 +510,56 @@ pub async fn switch_tenant(
     })
     .await?;
 
-    // Look up the user's active account in the target tenant with the same email
-    let target_row = state
-        .db
-        .query_one(Statement::from_sql_and_values(
-            sea_orm::DatabaseBackend::Postgres,
-            r#"SELECT u.id, u.tenant_id, u.email, u.username, u.password_hash, u.role,
-                      t.name AS tenant_name, t.slug AS tenant_slug
-               FROM users u
-               JOIN tenants t ON t.id = u.tenant_id
-               WHERE u.tenant_id = $1
-                 AND LOWER(BTRIM(u.email)) = LOWER($2)
-                 AND u.is_active = true
-               LIMIT 1"#,
-            [
-                body.tenant_id.into(),
-                current_user.email.trim().to_string().into(),
-            ],
-        ))
-        .await?
-        .ok_or_else(|| {
-            AppError::Forbidden(
-                "Für Ihre E-Mail-Adresse existiert kein aktives Konto im Ziel-Mandanten.".into(),
-            )
-        })?;
+    // First check if any already-verified user ID in this session belongs to `body.tenant_id`
+    // (supports 1-click return to Super-Admin after support impersonation as well as multi-tenant accounts).
+    let mut target_row_opt = None;
+    for v_uid in &auth_user.verified_user_ids {
+        if let Some(r) = state
+            .db
+            .query_one(Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                r#"SELECT u.id, u.tenant_id, u.email, u.username, u.password_hash, u.role,
+                          t.name AS tenant_name, t.slug AS tenant_slug
+                   FROM users u
+                   JOIN tenants t ON t.id = u.tenant_id
+                   WHERE u.id = $1 AND u.tenant_id = $2 AND u.is_active = true
+                   LIMIT 1"#,
+                [(*v_uid).into(), body.tenant_id.into()],
+            ))
+            .await?
+        {
+            target_row_opt = Some(r);
+            break;
+        }
+    }
+
+    // Fallback: look up the user's active account in the target tenant with the same email
+    let target_row = match target_row_opt {
+        Some(r) => r,
+        None => state
+            .db
+            .query_one(Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                r#"SELECT u.id, u.tenant_id, u.email, u.username, u.password_hash, u.role,
+                          t.name AS tenant_name, t.slug AS tenant_slug
+                   FROM users u
+                   JOIN tenants t ON t.id = u.tenant_id
+                   WHERE u.tenant_id = $1
+                     AND LOWER(BTRIM(u.email)) = LOWER($2)
+                     AND u.is_active = true
+                   LIMIT 1"#,
+                [
+                    body.tenant_id.into(),
+                    current_user.email.trim().to_string().into(),
+                ],
+            ))
+            .await?
+            .ok_or_else(|| {
+                AppError::Forbidden(
+                    "Für Ihr Konto existiert kein aktiver Zugang im Ziel-Mandanten.".into(),
+                )
+            })?,
+    };
 
     let target_user_id: Uuid = target_row.try_get("", "id")?;
     let target_tenant_id: Uuid = target_row.try_get("", "tenant_id")?;

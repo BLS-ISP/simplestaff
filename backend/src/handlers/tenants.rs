@@ -146,19 +146,22 @@ pub async fn update_tenant_settings(
                 .await?
                 .ok_or_else(|| AppError::NotFound("Tenant not found".to_string()))?;
 
-            let existing_max_employees = existing.settings.get("max_employees").cloned();
-            let existing_week_templates = existing.settings.get("week_templates").cloned();
+            let protected_keys = [
+                "max_employees",
+                "is_suspended",
+                "suspension_reason",
+                "license_note",
+                "license_expires_at",
+                "week_templates",
+            ];
 
             let mut new_settings = payload.settings;
             if let Some(obj) = new_settings.as_object_mut() {
-                if let Some(max_emp) = existing_max_employees {
-                    obj.insert("max_employees".to_string(), max_emp);
-                } else {
-                    obj.remove("max_employees");
-                }
-                if !obj.contains_key("week_templates") {
-                    if let Some(tpls) = existing_week_templates {
-                        obj.insert("week_templates".to_string(), tpls);
+                for key in protected_keys {
+                    if let Some(val) = existing.settings.get(key) {
+                        obj.insert(key.to_string(), val.clone());
+                    } else {
+                        obj.remove(key);
                     }
                 }
             }

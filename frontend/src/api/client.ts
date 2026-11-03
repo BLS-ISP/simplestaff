@@ -552,11 +552,33 @@ const shiftSwaps = {
 // Admin endpoints (for super_admin)
 // ---------------------------------------------------------------------------
 
+export interface TenantUserAdminInfo {
+  id: string;
+  email: string;
+  username: string | null;
+  first_name: string;
+  last_name: string;
+  role: string;
+  is_active: boolean;
+  linked_employee_id: string | null;
+  linked_employee_name: string | null;
+  created_at: string;
+}
+
 export interface TenantAdminInfo {
   id: string;
   name: string;
   slug: string;
   max_employees: number | null;
+  is_suspended: boolean;
+  suspension_reason: string | null;
+  license_note: string | null;
+  license_expires_at: string | null;
+  active_employees_count: number;
+  total_employees_count: number;
+  users_count: number;
+  shift_types_count: number;
+  admins: TenantUserAdminInfo[];
   created_at: string;
   updated_at: string;
 }
@@ -565,6 +587,8 @@ export interface CreateTenantAdminRequest {
   name: string;
   slug: string;
   max_employees: number | null;
+  license_note?: string | null;
+  license_expires_at?: string | null;
   manager_email: string;
   manager_username?: string;
   manager_password: string;
@@ -573,12 +597,40 @@ export interface CreateTenantAdminRequest {
   create_manager_employee?: boolean;
   manager_weekly_hours?: number;
   manager_vacation_days?: number;
+  seed_default_shifts?: boolean;
 }
 
 export interface UpdateTenantAdminRequest {
   name: string;
   slug: string;
   max_employees: number | null;
+  is_suspended?: boolean;
+  suspension_reason?: string | null;
+  license_note?: string | null;
+  license_expires_at?: string | null;
+}
+
+export interface CreateTenantUserAdminRequest {
+  email: string;
+  username?: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+  role?: string;
+  create_employee_profile?: boolean;
+  weekly_hours?: number;
+  vacation_days?: number;
+}
+
+export interface UpdateTenantUserAdminRequest {
+  email?: string;
+  username?: string;
+  first_name?: string;
+  last_name?: string;
+  role?: string;
+  is_active?: boolean;
+  password?: string;
+  ensure_employee_profile?: boolean;
 }
 
 const admin = {
@@ -600,6 +652,31 @@ const admin = {
   deleteTenant: (id: string) =>
     request<{ success: boolean }>(`/admin/tenants/${id}`, {
       method: 'DELETE',
+    }),
+
+  listTenantUsers: (tenantId: string) =>
+    request<TenantUserAdminInfo[]>(`/admin/tenants/${tenantId}/users`),
+
+  createTenantUser: (tenantId: string, data: CreateTenantUserAdminRequest) =>
+    request<TenantUserAdminInfo>(`/admin/tenants/${tenantId}/users`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateTenantUser: (tenantId: string, userId: string, data: UpdateTenantUserAdminRequest) =>
+    request<TenantUserAdminInfo>(`/admin/tenants/${tenantId}/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteTenantUser: (tenantId: string, userId: string) =>
+    request<{ success: boolean }>(`/admin/tenants/${tenantId}/users/${userId}`, {
+      method: 'DELETE',
+    }),
+
+  impersonateTenant: (tenantId: string) =>
+    request<LoginResponse>(`/admin/tenants/${tenantId}/impersonate`, {
+      method: 'POST',
     }),
 };
 

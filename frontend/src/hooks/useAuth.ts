@@ -97,6 +97,22 @@ export function useAuth() {
     }
   }, []);
 
+  const impersonateTenant = useCallback(async (tenantId: string): Promise<User> => {
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+    try {
+      const response = await api.admin.impersonateTenant(tenantId);
+      setAuthToken(response.token);
+      const user = await api.auth.me();
+      localStorage.setItem('simplestaff_user', JSON.stringify(user));
+      setState({ user, loading: false, error: null });
+      return user;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Support-Login fehlgeschlagen';
+      setState((prev) => ({ ...prev, loading: false, error: message }));
+      throw err;
+    }
+  }, []);
+
   const register = useCallback(async (data: { tenant_name: string; tenant_slug: string; email: string; password: string; first_name: string; last_name: string }) => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
@@ -145,6 +161,7 @@ export function useAuth() {
     error: state.error,
     login,
     switchTenant,
+    impersonateTenant,
     refreshUser,
     register,
     logout,

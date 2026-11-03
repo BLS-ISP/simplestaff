@@ -91,18 +91,26 @@ where
 
         // Verify live user status and current role in the database so that
         // deactivated/deleted accounts or role changes take effect immediately.
-        let live_user = execute_with_tenant(&app_state.db, &tenant_id, |txn| {
+        let (live_user, tenant_model) = execute_with_tenant(&app_state.db, &tenant_id, |txn| {
             Box::pin(async move {
-                user::Entity::find()
+                let u = user::Entity::find()
                     .filter(user::Column::Id.eq(user_id))
                     .filter(user::Column::TenantId.eq(tenant_id))
                     .one(txn)
                     .await
-                    .map_err(AppError::from)
+                    .map_err(AppError::from)?
+                    .ok_or_else(|| AppError::Unauthorized("Benutzerkonto existiert nicht mehr".to_string()))?;
+
+                let t = crate::models::tenant::Entity::find_by_id(tenant_id)
+                    .one(txn)
+                    .await
+                    .map_err(AppError::from)?
+                    .ok_or_else(|| AppError::Unauthorized("Mandant existiert nicht mehr".to_string()))?;
+
+                Ok((u, t))
             })
         })
-        .await?
-        .ok_or_else(|| AppError::Unauthorized("Benutzerkonto existiert nicht mehr".to_string()))?;
+        .await?;
 
         if !live_user.is_active {
             return Err(AppError::Unauthorized(
@@ -117,6 +125,10 @@ where
             return Err(AppError::Unauthorized(
                 "Invalid role in user account".to_string(),
             ));
+        }
+
+        if live_user.role != "super_admin" {
+            crate::models::tenant::check_tenant_license_active(&tenant_model.settings)?;
         }
 
         let mut verified = claims.verified_user_ids;
