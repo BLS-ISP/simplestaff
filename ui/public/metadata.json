@@ -18,7 +18,7 @@
     "code_url": "https://github.com/BLS-ISP/simplestaff",
     "bug_url": "https://github.com/BLS-ISP/simplestaff/issues",
     "relnotes_url": "https://github.com/BLS-ISP/simplestaff/releases",
-    "terms_url": "https://github.com/BLS-ISP/simplestaff"
+    "terms_url": "https://github.com/BLS-ISP/simplestaff/blob/main/LICENSE"
   },
   "source": "ghcr.io/bls-isp/ns8-simplestaff"
 }

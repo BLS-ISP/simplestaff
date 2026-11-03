@@ -1,0 +1,91 @@
+PROPRIETÄRE SOFTWARELIZENZ / PROPRIETARY SOFTWARE LICENSE
+=========================================================
+
+Copyright (c) 2026 BLS.ISP (BLS-ISP Solutions).
+Alle Rechte vorbehalten / All rights reserved.
+Kontakt / Contact: info@bls-isp.net
+
+---------------------------------------------------------------------------
+1. DEUTSCHE FASSUNG (RECHTSVERBINDLICH)
+---------------------------------------------------------------------------
+
+WICHTIGER HINWEIS – KEINE OPEN-SOURCE-SOFTWARE:
+Diese Software („SimpleStaff“, einschließlich sämtlicher Quellcodes,
+Backend- und Frontend-Komponenten, NethServer-8-Module, Container-Images,
+Datenbankschemata, Konfigurationsdateien und Dokumentationen) ist geistiges
+Eigentum der BLS.ISP und urheberrechtlich geschützt.
+
+1.1 Eingeschränkte Nutzung (Lizenzvertragspflicht)
+Die freie Nutzung dieser Software ist ausdrücklich ausgeschlossen. Jegliche
+Nutzung, Installation, Ausführung, Vervielfältigung, Bearbeitung,
+Verbreitung oder Bereitstellung der Software (sowohl zu kommerziellen als
+auch zu nicht-kommerziellen, internen oder produktiven Zwecken) ist nur
+gestattet, sofern ein gültiger, schriftlicher Lizenz- oder Nutzungsvertrag
+mit der BLS.ISP besteht.
+
+1.2 Keine Rechteeinräumung durch öffentliche Bereitstellung
+Die Abrufbarkeit des Quellcodes, der Releases oder der Container-Images auf
+öffentlichen Plattformen (insbesondere GitHub und GitHub Container Registry
+zum Zwecke der automatisierten Verteilung und Aktualisierung über das
+NethServer 8 Software Center) begründet keinerlei Lizenz-, Nutzungs- oder
+Verwertungsrechte für Dritte. Ohne ausdrücklichen Lizenzvertrag gegenüber
+der BLS.ISP ist das Herunterladen, Installieren oder Betreiben der Software
+untersagt.
+
+1.3 Verbote ohne ausdrückliche Genehmigung
+Sofern nicht ausdrücklich in einem wirksamen Lizenzvertrag mit der BLS.ISP
+vereinbart, ist es insbesondere untersagt:
+  a) die Software oder Teile davon produktiv oder zu Testzwecken in Betrieb
+     zu nehmen;
+  b) den Quellcode oder die Container-Images zu kopieren, zu modifizieren,
+     abgeleitete Werke zu erstellen oder in eigene Produkte einzubinden;
+  c) die Software an Dritte weiterzugeben, unterzulizenzieren, zu vermieten,
+     zu verpachten oder als Managed Service / SaaS für Dritte bereitzustellen;
+  d) Urheberrechtsvermerke, Lizenzhinweise oder Kennzeichnungen der BLS.ISP
+     zu entfernen oder zu verändern.
+
+1.4 Haftungsausschluss
+Soweit nicht in einem individuellen Lizenzvertrag mit der BLS.ISP
+abweichend geregelt, wird die Software „wie besehen“ (AS IS) ohne jegliche
+ausdrückliche oder stillschweigende Gewährleistung bereitgestellt.
+
+---------------------------------------------------------------------------
+2. ENGLISH VERSION (FOR INFORMATION PURPOSES)
+---------------------------------------------------------------------------
+
+IMPORTANT NOTICE – NOT OPEN SOURCE SOFTWARE:
+This software ("SimpleStaff", including all source code, backend and
+frontend components, NethServer 8 module files, container images, database
+schemas, configuration files, and documentation) is the proprietary
+intellectual property of BLS.ISP and is protected by copyright law.
+
+2.1 Restricted Use (License Agreement Required)
+Free use of this software is strictly prohibited. Any use, installation,
+execution, reproduction, modification, distribution, or deployment of this
+software (whether for commercial, non-commercial, internal, testing, or
+production purposes) is permitted solely under the terms of a valid, written
+license agreement with BLS.ISP.
+
+2.2 No Grant of Rights by Public Availability
+The availability of the source code, releases, or container images on public
+platforms (such as GitHub and GitHub Container Registry for automated
+delivery and updates via the NethServer 8 Software Center) does NOT grant
+any license or right to use the software. Downloading, installing, or
+operating this software without an active license agreement with BLS.ISP is
+strictly prohibited.
+
+2.3 Prohibited Actions Without Explicit Authorization
+Unless explicitly permitted by a valid written license agreement with
+BLS.ISP, you may NOT:
+  a) install, run, or operate the software or any part of it;
+  b) copy, modify, adapt, translate, or create derivative works based on the
+     source code or container images;
+  c) redistribute, sublicense, rent, lease, or provide the software as a
+     hosted/managed service (SaaS) to third parties;
+  d) remove, alter, or obscure any copyright, trademark, or license notices
+     of BLS.ISP.
+
+2.4 Contact for Licensing Inquiries
+To obtain a commercial license agreement, please contact:
+BLS.ISP (BLS-ISP Solutions)
+E-Mail: info@bls-isp.net

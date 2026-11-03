@@ -1,0 +1,120 @@
+# SimpleStaff
+
+**Intelligente Schichtplanung, Mitarbeiterverwaltung und ArbZG-Compliance-Plattform**
+
+> **Lizenzhinweis:** SimpleStaff ist proprietäre Software der **BLS.ISP**. Die freie Nutzung ist ausgeschlossen. Der Einsatz der Software (Quellcode sowie Container-Images) ist ausschließlich im Rahmen eines gültigen Lizenzvertrags gegenüber der **BLS.ISP** gestattet. Details finden Sie in der Datei [`LICENSE`](./LICENSE).
+
+---
+
+## Überblick
+
+**SimpleStaff** ist eine mandantenfähige Webanwendung zur digitalen Dienst- und Schichtplanung mit integrierter Prüfung nach dem deutschen Arbeitszeitgesetz (**ArbZG**). Die Lösung ist speziell für den Betrieb als Rootless-Container-Modul auf **NethServer 8 (NS8)** sowie für containerisierte Unternehmensumgebungen konzipiert.
+
+### Kernfunktionen
+
+- **Wochen- & Monats-Dienstplanung**
+  - Übersichtliche Wochen- und Monatsansichten mit Drag-&-Drop-/Klick-Zuweisung, Live-Stundenauswertung und Druck-/PDF-Ansicht.
+  - Automatische Kennzeichnung von genehmigten Urlauben, individuellen Sperrtagen, Betriebsferien und gesetzlichen Feiertagen.
+- **Integrierte ArbZG- & Regelprüfung**
+  - Echtzeit-Validierung bei jeder Schichtzuweisung und beim Schichttausch:
+    - Mindestruhezeit zwischen zwei Schichten (standardmäßig **11 Stunden** nach § 5 ArbZG, vorwärts- und rückwärtsgerichtet inkl. Nachtschichten).
+    - Maximale tägliche Arbeitszeit (z. B. **10 Stunden** nach § 3 ArbZG) unter automatischer Berücksichtigung gestaffelter Pausenregeln (§ 4 ArbZG).
+    - Maximale wöchentliche Arbeitszeit (individuelles Wochenstunden-Soll des Mitarbeiters sowie mandantenweite Obergrenze).
+    - Prüfung auf genehmigten Urlaub, Sperrtage, Wochentags-Sperrzeiten, Feiertags-Modi und Mindest-/Maximalbesetzung pro Schichttyp.
+- **Automatische Dienstplanbesetzung (Auto-Scheduler)**
+  - Regelbasierter Greedy-Solver zur automatischen Besetzung offener Schichten für frei wählbare Zukunftszeiträume unter Einhaltung aller ArbZG-Vorgaben, Mitarbeiterpräferenzen und gleichmäßiger Stundenauslastung.
+- **Schichttauschbörse & Urlaubsworkflow**
+  - Mitarbeiter können eigene Schichten zum Tausch freigeben (offen oder direkt an Kollegen adressiert) und Schichten übernehmen; Freigabe erfolgt durch Schichtleiter/Administratoren inkl. ArbZG-Prüfung.
+  - Digitaler Urlaubsantrag mit automatischer Werktagsberechnung (Mo–Fr), Resturlaubskonto und E-Mail-Benachrichtigung bei Antragstellung, Genehmigung oder Ablehnung.
+- **Kalender-Abonnement (iCal / WebCal)**
+  - Persönlicher ICS-Download sowie kryptografisch signierte Langzeit-Abo-Links (`webcal://` / `https://`) für die Live-Synchronisation in Apple Kalender, Google Calendar, Outlook und Smartphones.
+- **Mandantenfähigkeit (Multi-Tenancy) & Rollenmodell**
+  - Strikte Mandantentrennung bis auf Datenbankebene durch PostgreSQL Row-Level Security (`RLS`).
+  - Vierstufiges Berechtigungskonzept:
+    - `super_admin`: Mandantenverwaltung und Festlegung von Mitarbeiter-Kontingenten (`max_employees`).
+    - `admin`: Vollzugriff innerhalb des eigenen Betriebs (Mitarbeiter, Konten, Rollen, Arbeitszeitregeln, Dienstpläne).
+    - `planner`: Schichtleiter-Zugriff für Dienstpläne, Urlaubsfreigaben und Schichttausch-Genehmigungen.
+    - `viewer`: Mitarbeiter-Self-Service (eigene Schichten, Kalender-Abo, Urlaubsanträge, Sperrtage, Schichttauschbörse).
+
+---
+
+## Architektur & Technologie-Stack
+
+| Komponente | Technologie | Beschreibung |
+| :--- | :--- | :--- |
+| **Backend** (`backend/`) | Rust (Edition 2024), Axum 0.8, SeaORM 1.x, Tokio | REST-API, JWT-Authentifizierung, Argon2-Passwort-Hashing, ArbZG-Validierung, Auto-Scheduler, iCal-Generator, Lettre SMTP-Mailer |
+| **Datenbank** | PostgreSQL 15 (Alpine) | Automatische SeaORM-Migrationen beim Start, mandantenweite Isolation über PostgreSQL Row-Level Security (`app.current_tenant`) |
+| **Frontend** (`frontend/`) | React 19, TypeScript, Vite, React Router 7, i18next | Single-Page-Application (DE/EN), ausgeliefert über Nginx mit Reverse-Proxy für `/api/*` |
+| **NS8-Modul** (`imageroot/`, `ui/`) | Rootless Podman, systemd User-Units, Vue 2 / Carbon UI | Vollständige NethServer-8-Integration inkl. Traefik-Routing (Let's Encrypt), SMTP-Konfiguration, Restic-Backup/Restore und Software-Center-Metadaten |
+
+---
+
+## Installation & Betrieb auf NethServer 8
+
+> **Voraussetzung:** Für die Installation und Nutzung ist ein gültiger Lizenzvertrag mit der **BLS.ISP** erforderlich.
+
+### 1. Über das NethServer 8 Software Center (Empfohlen)
+
+1. Öffnen Sie im NethServer 8 Cluster-Admin die Seite **Einstellungen → Software-Repositorys**.
+2. Fügen Sie das SimpleStaff-Repository hinzu:
+   - **Name:** `bls-isp`
+   - **URL:** `https://raw.githubusercontent.com/BLS-ISP/simplestaff/repomd/`
+3. Installieren Sie **SimpleStaff** direkt über das **Software Center** und konfigurieren Sie anschließend in den Modul-Einstellungen den gewünschten Hostnamen (z. B. `time.ihre-domain.de`) sowie optional den SMTP-Versand.
+4. Neue Versionen stehen automatisch als reguläres Update im NethServer 8 Software Center bereit.
+
+### 2. Über die Kommandozeile (CLI)
+
+```bash
+add-module ghcr.io/bls-isp/ns8-simplestaff:latest 1
+```
+
+Zur Aktualisierung einer bestehenden Instanz (z. B. `ns8-simplestaff1`) über die CLI:
+
+```bash
+api-cli run update-module --data '{"module_url":"ghcr.io/bls-isp/ns8-simplestaff:1.1.4","instances":["ns8-simplestaff1"],"force":false}'
+```
+
+---
+
+## Entwicklung & Lokaler Build
+
+### Lokaler Start mit Docker Compose
+
+```bash
+cp .env.example .env   # falls vorhanden, oder Umgebungsvariablen setzen
+docker compose up --build -d
+```
+
+### Manuelles Prüfen & Bauen
+
+**Backend (Rust):**
+
+```bash
+cd backend
+cargo test
+cargo build --release
+```
+
+**Frontend (React / TypeScript):**
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+---
+
+## Lizenz & Urheberrecht
+
+**Copyright © 2026 BLS.ISP (BLS-ISP Solutions). Alle Rechte vorbehalten.**
+
+Dieses Projekt unterliegt einer **proprietären Softwarelizenz**. Die freie Nutzung, Vervielfältigung, Modifikation oder Verbreitung ist **nicht gestattet**. Jeglicher Einsatz der Software setzt einen aktiven, schriftlichen Lizenzvertrag gegenüber der **BLS.ISP** voraus.
+
+Den vollständigen Lizenztext finden Sie in der Datei [`LICENSE`](./LICENSE).
+
+### Kontakt für Lizenzanfragen & Support
+
+- **Unternehmen:** BLS.ISP (BLS-ISP Solutions)
+- **E-Mail:** [info@bls-isp.net](mailto:info@bls-isp.net)
+- **Web / Portal:** [https://time.bls-isp.net](https://time.bls-isp.net)
