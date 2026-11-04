@@ -298,7 +298,11 @@
                     {{ image.name }}
                   </cv-structured-list-data>
                   <cv-structured-list-data class="size-cell">
-                    {{ image.size | byteFormat }}
+                    {{
+                      typeof image.size === "number"
+                        ? $options.filters.byteFormat(image.size)
+                        : image.size
+                    }}
                   </cv-structured-list-data>
                   <cv-structured-list-data class="date-cell">
                     {{ image.created }}
@@ -468,12 +472,14 @@ export default {
       return this.$t("status.backup_status_active");
     },
   },
+  created() {
+    this.getStatus();
+    this.getConfiguration();
+  },
   beforeRouteEnter(to, from, next) {
     next((vm) => {
       vm.watchQueryData(vm);
       vm.urlCheckInterval = vm.initUrlBindingForApp(vm, vm.q.page);
-      vm.getStatus();
-      vm.getConfiguration();
     });
   },
   beforeRouteLeave(to, from, next) {

@@ -9,13 +9,10 @@ Vue.use(VueRouter);
 
 const routes = [
   {
-    path: "/status",
+    path: "/",
     name: "Status",
     component: Status,
-  },
-  {
-    path: "/",
-    redirect: "/status",
+    alias: "/status",
   },
   {
     path: "/settings",

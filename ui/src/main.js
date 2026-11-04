@@ -1,3 +1,4 @@
+import "./mixins/ns8Patch";
 import Vue from "vue";
 import App from "./App.vue";
 import router from "./router";

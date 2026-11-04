@@ -17,7 +17,7 @@ RUN find /imageroot -name "__pycache__" -type d -prune -exec rm -rf {} + && \
 
 # NethServer 8 Module metadata labels
 LABEL org.nethserver.rootfull="0" \
-      org.nethserver.images="docker.io/library/postgres:15-alpine ghcr.io/bls-isp/simplestaff-backend:${IMAGE_TAG} ghcr.io/bls-isp/simplestaff-frontend:${IMAGE_TAG}" \
+      org.nethserver.images="ghcr.io/bls-isp/simplestaff-backend:${IMAGE_TAG} ghcr.io/bls-isp/simplestaff-frontend:${IMAGE_TAG}" \
       org.nethserver.authorizations="traefik@node:routeadm" \
       org.nethserver.tcp-ports-demand="1"
 

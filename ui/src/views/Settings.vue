@@ -397,11 +397,13 @@ export default {
   computed: {
     ...mapState(["instanceName", "core", "appName"]),
   },
+  created() {
+    this.getConfiguration();
+  },
   beforeRouteEnter(to, from, next) {
     next((vm) => {
       vm.watchQueryData(vm);
       vm.urlCheckInterval = vm.initUrlBindingForApp(vm, vm.q.page);
-      vm.getConfiguration();
     });
   },
   beforeRouteLeave(to, from, next) {
@@ -548,6 +550,11 @@ export default {
       );
 
       this.core.$root.$once(
+        `${taskAction}-validation-failed-${eventId}`,
+        this.configureModuleValidationFailed
+      );
+
+      this.core.$root.$once(
         `${taskAction}-completed-${eventId}`,
         this.configureModuleCompleted
       );
@@ -600,6 +607,18 @@ export default {
       this.error.configureModule =
         (taskResult && taskResult.error) || this.$t("error.generic_error");
       this.loading.configureModule = false;
+    },
+    configureModuleValidationFailed(validationErrors) {
+      this.loading.configureModule = false;
+      for (const validationError of validationErrors) {
+        const param = validationError.parameter;
+        if (param === "domain_name" || param === "hostname") {
+          this.error.domainName = this.$t("settings." + validationError.error);
+        } else {
+          this.error.configureModule =
+            validationError.error || this.$t("error.generic_error");
+        }
+      }
     },
     configureModuleCompleted() {
       this.loading.configureModule = false;
